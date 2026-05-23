@@ -11,35 +11,39 @@ class MainApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      
-      routerConfig: appRouter,     
-        theme: ThemeData(
-        brightness: Brightness.dark,
+      routerConfig: appRouter,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
         primaryColor: const Color(0xFF1E2A38),
-        colorScheme: ColorScheme.dark(
+        colorScheme: ColorScheme.light(
           primary: const Color(0xFF1E2A38),
           secondary: const Color(0xFFE53935),
-          surface: const Color(0xFF212121),
+          surface: Colors.white,
           onPrimary: Colors.white,
-          onSecondary: Colors.white,
+          onSurface: Colors.black,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1E2A38),
+          foregroundColor: Colors.white,
         ),
         textTheme: const TextTheme(
           headlineLarge: TextStyle(
-              fontFamily: 'Montserrat',
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.white),
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
           bodyLarge: TextStyle(
-              fontFamily: 'OpenSans',
-              fontSize: 16,
-              color: Colors.white70),
+            fontSize: 16,
+            color: Colors.black87,
+          ),
           labelLarge: TextStyle(
-              fontFamily: 'Oswald',
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.greenAccent),
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1E2A38),
+          ),
         ),
-      ),    // usa tu GoRouter definido en app_router.dart
-      );
+      ),
+    );
   }
 }
