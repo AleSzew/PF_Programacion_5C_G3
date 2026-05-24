@@ -16,13 +16,6 @@ class _LoginState extends State<Login> {
 
   @override
   Widget build(BuildContext context) {
-  Users miUsuario = Users(
-  name: 'ale',
-  password: 'ale',
-  email: 'ale@gmail.com',
-  age: '20',
-);
-
     return Scaffold(
        appBar: AppBar(
         title: Text(

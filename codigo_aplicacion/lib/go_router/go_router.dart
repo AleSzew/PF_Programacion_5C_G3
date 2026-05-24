@@ -43,7 +43,7 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/infousers',
-      builder: (context, state) =>  Infousers(),
+      builder: (context, state) => const Infousers(),
     ),
      GoRoute(
       path: '/pantallabluetooth',

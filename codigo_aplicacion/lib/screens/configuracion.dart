@@ -16,15 +16,7 @@ class _ConfiguracionState extends State<Configuracion> {
   bool modoOscuro = false;
 
   @override
-  Widget build(BuildContext context){
-    Users miUsuario = Users(
-  name: 'ale',
-  password: 'ale',
-  email: 'ale@gmail.com',
-  age: '20',
-);
-
-
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color.fromARGB(75, 51, 0, 255),
