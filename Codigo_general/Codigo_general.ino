@@ -99,7 +99,7 @@ void Maq_General() {
     case ANALISIS_REP:
       if (digitalRead(PIN_BOTON) == LOW) {
         Serial.println("Se tocó el botón, terminó la serie.");
-        estadoMaq_General = RST;
+        estadoMaq_General = ANALISIS_SERIE;
       }
       break;
 
@@ -107,11 +107,11 @@ void Maq_General() {
       if (digitalRead(PIN_BOTON) == LOW && msboton >= 5000) {
         Serial.println("Botón presionado >5s, apagar sistema.");
       }
+      estadoMaq_General = C_APLICACION;
       break;
 
     case C_APLICACION:
-      {
-      }
+      
       break;
 
     case RST:
