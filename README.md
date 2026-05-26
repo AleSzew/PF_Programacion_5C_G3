@@ -1,4 +1,4 @@
-Primero te explico todo el proyecto. Básicamente, es un asistente para el gimnasio, enfocado en la técnica con el fin de evitar lesiones.
+ Básicamente, es un asistente para el gimnasio, enfocado en la técnica con el fin de evitar lesiones.
 Por ahora se utilizan 3 sensores MPU6050, que miden inclinación y velocidades mientras se realiza el ejercicio. Estos sensores envían los datos por Wi-Fi a un ESP32 principal, que además contiene uno de los tres MPU6050. Este ESP32 analiza los valores provenientes de los tres sensores y, en base a ellos, comprueba si los ejercicios se realizaron correctamente o no.
 Hasta acá, eso corresponde a la parte de Arduino, la cual se puede encontrar en el código general y en el código auxiliar (hay un solo código auxiliar, ya que el segundo y tercer módulo son iguales).
 
