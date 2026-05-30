@@ -9,22 +9,22 @@ final List<Map<String, String>> listaEjercicios = [
   {
     'id': '2',
     'nombre': 'Elevaciones laterales',
-    'video': 'https://www.youtube.com/shorts/rv44DZhCO1g',
+    'video': 'https://www.youtube.com/watch?v=MwhnGYwxkS0',
   },
   {
     'id': '3',
     'nombre': 'Sentadilla',
-    'video': 'https://www.youtube.com/shorts/UbIClfnHOuw',
+    'video': 'https://www.youtube.com/watch?v=O7pDEpq4n8k',
   },
   {
     'id': '4',
     'nombre': 'Press de banca',
-    'video': 'https://www.youtube.com/shorts/gRVj1P6a1UE',
+    'video': 'https://www.youtube.com/watch?v=wYXFJZEdZ3A',
   },
   {
     'id': '5',
     'nombre': 'Flexiones de pecho',
-    'video': 'https://www.youtube.com/shorts/IODxDxX7oiM',
+    'video': 'https://www.youtube.com/watch?v=5HL5WY0WVJQ',
   },
 ];
 

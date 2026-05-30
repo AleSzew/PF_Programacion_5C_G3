@@ -1,4 +1,4 @@
-import 'package:codigo_aplicacion/pantalla_bluetooth.dart';
+import 'package:codigo_aplicacion/screens/pantalla_bluetooth.dart';
 import 'package:codigo_aplicacion/screens/infousers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:codigo_aplicacion/screens/login.dart';
