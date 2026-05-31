@@ -58,7 +58,13 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                           if (await canLaunchUrl(link)) {
                             await launchUrl(
                               link,
-                              mode: LaunchMode.externalApplication,
+                              mode: LaunchMode.platformDefault, // más seguro
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('No se pudo abrir el video'),
+                              ),
                             );
                           }
                         },

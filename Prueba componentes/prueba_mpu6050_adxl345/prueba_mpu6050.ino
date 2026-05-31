@@ -1,3 +1,5 @@
+//--------------------------------------------------ADXL345----------------------
+/*
 #include "Wire.h"
 #include "I2Cdev.h"
 #include "MPU6050.h"
@@ -60,4 +62,38 @@ void loop() {
 
   Serial.println("-----------------------------");
   delay(1000);
+}*/
+//--------------------------------------------------ADXL345----------------------
+ 
+
+#include <Wire.h>
+#include <Adafruit_ADXL345_U.h>
+
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22); // SDA=21, SCL=22
+
+  if (!accel.begin()) {
+    Serial.println("Error al conectar el ADXL345");
+    while (1);
+  } else {
+    Serial.println("ADXL345 conectado correctamente");
+  }
+
+  accel.setRange(ADXL345_RANGE_16_G);
 }
+
+void loop() {
+  sensors_event_t event;
+  accel.getEvent(&event);
+
+  Serial.print("Accel X: "); Serial.print(event.acceleration.x);
+  Serial.print("  Y: "); Serial.print(event.acceleration.y);
+  Serial.print("  Z: "); Serial.println(event.acceleration.z);
+
+  delay(100);
+}
+
+

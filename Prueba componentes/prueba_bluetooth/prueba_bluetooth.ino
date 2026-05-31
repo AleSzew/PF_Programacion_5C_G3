@@ -3,6 +3,11 @@ BluetoothSerial SerialBT;
 
 void setup() {
   Serial.begin(115200);
+<<<<<<< HEAD
+=======
+Serial.print("Dirección MAC: ");
+  Serial.println(WiFi.macAddress());
+>>>>>>> 5a5089d831d76d4f037d65db950b5bb6c28f8213
   // Inicializar Bluetooth con un nombre visible
   SerialBT.begin("ESP32_BT_MINIMO");
   Serial.println("Bluetooth listo, conecta tu app Flutter.");
