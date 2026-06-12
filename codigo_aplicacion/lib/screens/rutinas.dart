@@ -37,8 +37,8 @@ class _RutinasState extends State<Rutinas> {
         child: ListView(
           padding: EdgeInsets.all(5),
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
+             DrawerHeader(
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
               child: Text(
                 'Menú de navegación',
                 style: TextStyle(color: Colors.white, fontSize: 20),

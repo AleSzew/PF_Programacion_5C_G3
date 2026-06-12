@@ -14,15 +14,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color.fromARGB(75, 51, 0, 255),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         title: const Text("Bienvenido a Techeck"),
       ),
       drawer: Drawer(
         child: ListView(
           padding: const EdgeInsets.all(5),
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
+             DrawerHeader(
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
               child: Text(
                 "Menú de navegación",
                 style: TextStyle(color: Colors.white, fontSize: 20),
@@ -67,10 +67,6 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () => context.push('/rutinas'),
               child: const Text(
                 "Nueva Rutina",
-                style: TextStyle(
-                  color: Color.fromARGB(0, 0, 0, 0),
-                  fontSize: 22,
-                ),
               ),
             ),
           ),

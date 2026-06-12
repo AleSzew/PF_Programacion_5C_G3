@@ -19,7 +19,7 @@ class _ConfiguracionState extends State<Configuracion> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color.fromARGB(75, 51, 0, 255),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         title:  Text("Bienvenido ${miUsuario.name}", style: TextStyle(fontSize: 30),)
       ),
        body: ListView(

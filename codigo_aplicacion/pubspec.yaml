@@ -15,6 +15,7 @@ dependencies:
   go_router: ^17.2.1
   flutter_bluetooth_serial:
    path: ./packages/flutter_bluetooth_serial
+  flutter_reactive_ble: ^5.5.0
 
 dev_dependencies:
   flutter_test:
