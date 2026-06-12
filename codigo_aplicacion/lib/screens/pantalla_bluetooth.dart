@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 
 class PantallaBluetooth extends StatefulWidget {
   const PantallaBluetooth({Key? key}) : super(key: key);
@@ -8,61 +7,48 @@ class PantallaBluetooth extends StatefulWidget {
   @override
   _PantallaBluetoothState createState() => _PantallaBluetoothState();
 }
-// Hola 
+
 class _PantallaBluetoothState extends State<PantallaBluetooth> {
-  BluetoothConnection? _connection;
+  final flutterReactiveBle = FlutterReactiveBle();
   String feedback = "Esperando datos...";
+
+  DiscoveredDevice? esp32Device;
+  late QualifiedCharacteristic characteristic;
 
   @override
   void initState() {
     super.initState();
-    _initBluetooth();
+    _scanAndConnect();
   }
 
-  Future<void> _initBluetooth() async {
-    // Pedir permisos en tiempo de ejecución
-    await Permission.bluetoothScan.request();
-    await Permission.bluetoothConnect.request();
+  void _scanAndConnect() {
+    flutterReactiveBle.scanForDevices(withServices: []).listen((device) { //escanea todos dispositivos
+      if (device.name == "Techeck_ESP32") {
+        esp32Device = device;
 
+        flutterReactiveBle.connectToDevice(id: device.id).listen((update) {
+          if (update.connectionState == DeviceConnectionState.connected) {
+            characteristic = QualifiedCharacteristic(
+              serviceId: Uuid.parse("11111111-1111-1111-1111-111111111111"), // TecheckService, coinciden con el de arduino ide
+              characteristicId: Uuid.parse("22222222-2222-2222-2222-222222222222"), // TecheckFeedbackCharacteristic
+              deviceId: device.id,
+            );
 
-    // Intentar conectar después de permisos
-    _connectToDevice();
-  }
-
-  Future<void> _connectToDevice() async {
-  try {
-    List<BluetoothDevice> devices =
-        await FlutterBluetoothSerial.instance.getBondedDevices();
-
-    // Buscar el ESP32 en la lista de emparejados
-    BluetoothDevice? device = devices.firstWhere(
-      (d) => d.address == '28:05:A5:0B:2C:72',
-      orElse: () => throw Exception('ESP32 no emparejado'),
-    );
-
-    _connection = await BluetoothConnection.toAddress(device.address);
-    print('Conectado a ${device.name}');
-
-    _connection!.input!.listen((data) {
-      String recibido = String.fromCharCodes(data).trim();
-      setState(() {
-        feedback = recibido;
-      });
-      print("Dato recibido: $recibido");
+            flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
+              setState(() {
+                feedback = String.fromCharCodes(data);
+              });
+            });
+          }
+        });
+      }
     });
-  } catch (error) {
-    setState(() {
-      feedback = "Error al conectar: $error";
-    });
-    print('Error al conectar: $error');
   }
-}
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Bluetooth Setup')),
+      appBar: AppBar(title: const Text('Techeck BLE Setup')),
       body: Center(
         child: Card(
           child: Padding(
