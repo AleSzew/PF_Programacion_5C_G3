@@ -8,7 +8,7 @@ class PantallaBluetooth extends StatefulWidget {
   @override
   _PantallaBluetoothState createState() => _PantallaBluetoothState();
 }
-// Hola 
+
 class _PantallaBluetoothState extends State<PantallaBluetooth> {
   BluetoothConnection? _connection;
   String feedback = "Esperando datos...";
