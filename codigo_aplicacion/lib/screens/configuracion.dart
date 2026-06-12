@@ -20,7 +20,7 @@ class _ConfiguracionState extends State<Configuracion> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.primary,
-        title:  Text("Bienvenido ${miUsuario.name}", style: TextStyle(fontSize: 30),)
+        title:  Text("Bienvenido ${miUsuario.name}", style: TextStyle(fontSize: 30, color: Colors.white),)
       ),
        body: ListView(
         children: [

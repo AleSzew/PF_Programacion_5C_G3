@@ -15,7 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.primary,
-        title: const Text("Bienvenido a Techeck"),
+        title: const Text("Bienvenido a Techeck",style: TextStyle(color: Colors.white)),
       ),
       drawer: Drawer(
         child: ListView(

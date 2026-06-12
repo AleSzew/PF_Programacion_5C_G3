@@ -7,7 +7,7 @@ import 'package:codigo_aplicacion/screens/rutinas.dart';
 import 'package:codigo_aplicacion/screens/estadisticas.dart';
 import 'package:codigo_aplicacion/screens/configuracion.dart';
 import 'package:codigo_aplicacion/screens/ejercicios.dart';
-import 'package:codigo_aplicacion/screens/videoejercicios.dart';
+
 
 
 final appRouter = GoRouter(
@@ -36,10 +36,6 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/ejercicios',
       builder: (context, state) => const Ejercicios(),
-    ),
-    GoRoute(
-      path: '/videoejercicios',
-      builder: (context, state) => const Videoejercicios(),
     ),
     GoRoute(
       path: '/infousers',
