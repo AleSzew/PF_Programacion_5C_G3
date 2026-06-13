@@ -21,7 +21,7 @@ jobs:
       - run: pod repo update
         working-directory: codigo_aplicacion/ios
 
-      - run: flutter build ios --release --no-codesign
+- run: flutter build ios --config-only --release --no-codesign && flutter build ios --simulator --no-codesign
         working-directory: codigo_aplicacion
 
       - run: mkdir Payload
