@@ -34,7 +34,6 @@ void loop() {
   // Enviar mensaje fijo cada 2 segundos
   pCharacteristic->setValue("Hola desde Techeck");
   pCharacteristic->notify();
-
   Serial.println("Notificación enviada: Hola desde Techeck");
   delay(2000);
 }
