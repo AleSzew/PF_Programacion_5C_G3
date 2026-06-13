@@ -3,9 +3,12 @@ name: iOS-ipa-build
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-ios:
-    name: 🎉 iOS Build
+    name:  iOS Build
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
@@ -14,16 +17,18 @@ jobs:
         with:
           channel: 'stable'
           architecture: x64
-          
+
       - run: flutter pub get
         working-directory: codigo_aplicacion
 
       - run: pod repo update
         working-directory: codigo_aplicacion/ios
 
-      - run: flutter build ios --config-only --release --no-codesign && flutter build ios --simulator --no-codesign
+      # Comando correcto para compilar para dispositivo real sin firmar
+      - run: flutter build ios --release --no-codesign
         working-directory: codigo_aplicacion
 
+      # Crear la estructura de empaquetado para iPhone real
       - run: mkdir Payload
         working-directory: codigo_aplicacion/build/ios/iphoneos
 
@@ -34,6 +39,7 @@ jobs:
         run: zip -qq -r -9 FlutterIpaExport.ipa Payload
         working-directory: codigo_aplicacion/build/ios/iphoneos
 
+      # Subir a Releases
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@v2
         with:
