@@ -12,23 +12,15 @@ class PantallaBluetooth extends StatefulWidget {
 
 class _PantallaBluetoothState extends State<PantallaBluetooth> {
   final flutterReactiveBle = FlutterReactiveBle();
-  String feedback = "Esperando datos...";
-  String status = "Idle";
-  String lastLog = "";
-  DiscoveredDevice? esp32Device;
-  late QualifiedCharacteristic characteristic;
+  String status = "Esperando";
+  String feedback = "Pulsa Escanear para buscar el ESP32";
+  List<DiscoveredDevice> devices = [];
   StreamSubscription<DiscoveredDevice>? scanSub;
   StreamSubscription<ConnectionStateUpdate>? connSub;
   StreamSubscription<List<int>>? notifySub;
 
   final Uuid serviceUuid = Uuid.parse("11111111-1111-1111-1111-111111111111");
   final Uuid charUuid = Uuid.parse("22222222-2222-2222-2222-222222222222");
-
-  @override
-  void initState() {
-    super.initState();
-    _startScan();
-  }
 
   @override
   void dispose() {
@@ -38,108 +30,130 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     super.dispose();
   }
 
-  void _log(String m) {
-    setState(() {
-      lastLog = "${DateTime.now().toIso8601String()} - $m\n" + lastLog;
-      if (lastLog.length > 4000) lastLog = lastLog.substring(0, 4000);
-    });
-  }
-
   void _startScan() {
-    setState(() { status = "Escaneando..."; feedback = "Escaneando BLE por servicio"; });
-    _log("Iniciando scan por servicio $serviceUuid");
-    scanSub = flutterReactiveBle.scanForDevices(withServices: [serviceUuid]).listen((device) {
-      _log("Encontrado device: ${device.name} (${device.id}) - rssi ${device.rssi}");
-      if (device.name == "Techeck_ESP32" || device.serviceUuids.contains(serviceUuid.toString())) {
-        esp32Device = device;
-        _log("Seleccionado dispositivo ${device.name}");
-        scanSub?.cancel();
-        setState(() { status = "Conectando a ${device.name}"; });
-        _connectToDevice(device);
-      }
-    }, onError: (e) {
-      _log("Error scan: $e");
-      setState(() { status = "Error en scan"; });
+    scanSub?.cancel();
+    devices = [];
+    setState(() {
+      status = "Escaneando BLE";
+      feedback = "Buscando dispositivos...";
     });
+
+    scanSub = flutterReactiveBle.scanForDevices(withServices: []).listen(
+      (device) {
+        if (!devices.any((d) => d.id == device.id)) {
+          devices.add(device);
+        }
+        setState(() {});
+      },
+      onError: (error) {
+        setState(() {
+          status = "Error escaneo";
+          feedback = "Error al buscar dispositivos";
+        });
+      },
+    );
   }
 
   void _connectToDevice(DiscoveredDevice device) {
-    connSub = flutterReactiveBle.connectToDevice(id: device.id).listen((update) async {
-      _log("Connection state: ${update.connectionState}");
-      setState(() { status = "Estado: ${update.connectionState}"; });
-      if (update.connectionState == DeviceConnectionState.connected) {
-        characteristic = QualifiedCharacteristic(
-          deviceId: device.id,
-          serviceId: serviceUuid,
-          characteristicId: charUuid,
-        );
-        _log("Conectado: suscribiendo a característica $charUuid");
-        try {
-          notifySub = flutterReactiveBle.subscribeToCharacteristic(characteristic).listen((data) {
-            String s = String.fromCharCodes(data);
-            _log("Notificación recibida raw: ${data.toString()}");
-            _log("Notificación recibida str: $s");
-            setState(() {
-              feedback = s;
-            });
-          }, onError: (e) {
-            _log("Error en subscribe: $e");
-            setState(() { status = "Error subscribe"; });
-          });
-
-          // Intentar leer valor inicial (si existe)
-          try {
-            final bytes = await flutterReactiveBle.readCharacteristic(characteristic);
-            String initial = String.fromCharCodes(bytes);
-            _log("ReadCharacteristic: $initial");
-            setState(() { feedback = initial; });
-          } catch (e) {
-            _log("readCharacteristic falló: $e");
-          }
-
-          // Si querés enviar el ID del ejercicio al dispositivo (si la característica acepta WRITE),
-          // descomenta y usa writeCharacteristicWithResponse o WithoutResponse según necesidad.
-          // await flutterReactiveBle.writeCharacteristicWithResponse(characteristic, value: widget.ejercicioId?.codeUnits ?? []);
-
-        } catch (e) {
-          _log("Excepción al suscribir: $e");
-          setState(() { status = "Error al suscribir"; });
-        }
-      }
-    }, onError: (e) {
-      _log("Error conexión: $e");
-      setState(() { status = "Error conexión"; });
+    scanSub?.cancel();
+    setState(() {
+      status = "Conectando a ${device.name.isEmpty ? device.id : device.name}";
+      feedback = "Intentando conectar...";
     });
+
+    connSub = flutterReactiveBle.connectToDevice(id: device.id).listen(
+      (update) async {
+        setState(() {
+          status = "Estado: ${update.connectionState}";
+        });
+
+        if (update.connectionState == DeviceConnectionState.connected) {
+          final characteristic = QualifiedCharacteristic(
+            deviceId: device.id,
+            serviceId: serviceUuid,
+            characteristicId: charUuid,
+          );
+
+          notifySub = flutterReactiveBle
+              .subscribeToCharacteristic(characteristic)
+              .listen((data) {
+            final message = String.fromCharCodes(data);
+            setState(() {
+              feedback = message;
+              status = "Conectado";
+            });
+          }, onError: (error) {
+            setState(() {
+              status = "Error notificación";
+              feedback = "No se pudo recibir datos";
+            });
+          });
+        }
+      },
+      onError: (error) {
+        setState(() {
+          status = "Error conexión";
+          feedback = "No se pudo conectar";
+        });
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Techeck BLE Setup')),
+      appBar: AppBar(title: const Text('Techeck BLE')),
       body: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
             Text("Estado: $status"),
-            const SizedBox(height: 8),
-            Card(child: Padding(padding: EdgeInsets.all(12), child: Text(feedback))),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () {
-                scanSub?.cancel();
-                connSub?.cancel();
-                notifySub?.cancel();
-                esp32Device = null;
-                setState(() {
-                  status = "Reiniciando scan";
-                  feedback = "Reiniciando...";
-                });
-                _startScan();
-              },
-              child: const Text("Reintentar escaneo"),
+            const SizedBox(height: 10),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(feedback),
+              ),
             ),
-            const SizedBox(height: 8),
-            Expanded(child: SingleChildScrollView(child: Text(lastLog))),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                ElevatedButton(onPressed: _startScan, child: const Text("Escanear")),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: () {
+                    scanSub?.cancel();
+                    setState(() {
+                      status = "Escaneo detenido";
+                      feedback = "Puedes volver a escanear";
+                    });
+                  },
+                  child: const Text("Detener"),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: devices.isEmpty
+                  ? const Center(child: Text("No hay dispositivos BLE"))
+                  : ListView.builder(
+                      itemCount: devices.length,
+                      itemBuilder: (context, index) {
+                        final device = devices[index];
+                        final name = device.name.isEmpty ? "Sin nombre" : device.name;
+                        return Card(
+                          child: ListTile(
+                            title: Text(name),
+                            subtitle: Text(device.id),
+                            trailing: ElevatedButton(
+                              onPressed: () => _connectToDevice(device),
+                              child: const Text("Conectar"),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
           ],
         ),
       ),
