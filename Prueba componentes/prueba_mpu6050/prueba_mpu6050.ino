@@ -14,7 +14,7 @@ float inclX, inclY, inclZ;
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin();
+  Wire.begin(8,9); // SDA, SCL
 
   sensor.initialize();
 
