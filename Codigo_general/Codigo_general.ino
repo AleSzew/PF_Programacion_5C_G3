@@ -54,9 +54,7 @@ String resultadoValidacion = "";
 const char* serverNameAx = "http://192.168.4.2/Ax";
 const char* serverNameAy = "http://192.168.4.2/Ay";
 const char* serverNameAz = "http://192.168.4.2/Az";
-const char* serverNameGx = "http://192.168.4.2/Gx";
-const char* serverNameGy = "http://192.168.4.2/Gy";
-const char* serverNameGz = "http://192.168.4.2/Gz";
+
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3";
 
@@ -88,7 +86,7 @@ void setup() {
   
   // BLE Nimble
   inicializarBLE();
-  
+  timerMediciones.attach(0.01, mediciones);
   timerBoton.attach(1, segundosBoton);
 }
 void loop() {
@@ -169,11 +167,11 @@ void calibrarEstandar() {
   std_inclX = inclX;
   std_inclY = inclY;
   std_inclZ = inclZ;
-  Serial.println("Valores estándar guardados ✅");
+  Serial.println("Valores estándar guardados ");
 }
 void compararConEstandar() {
   float tol_acc = 2.0;
-  float tol_incl = 5.0;
+  float tol_incl = 2.0;
   bool correcto_local = true;
   bool correcto_aux = true;
 

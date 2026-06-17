@@ -11,7 +11,7 @@ import 'package:codigo_aplicacion/screens/ejercicios.dart';
 
 
 final appRouter = GoRouter(
-  initialLocation: '/login',
+  initialLocation: '/homescreen',
   routes: [
     GoRoute(
       path: '/login',
