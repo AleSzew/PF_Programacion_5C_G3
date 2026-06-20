@@ -1,50 +1,53 @@
-#include "I2Cdev.h"
-#include "MPU6050.h"
+#include <MPU6050.h>
 #include "Wire.h"
 #include "WiFi.h"
-#include "ESPAsyncWebServer.h"
-#include "BluetoothSerial.h"
-#include <HTTPClient.h>  
+#include <HTTPClient.h>
 #include <Ticker.h>
 #include <NimBLEDevice.h>
 
 MPU6050 sensor;
-AsyncWebServer server(80);
 NimBLEServer* pServer;
 NimBLECharacteristic* pCharacteristic;
-NimBLECharacteristic* pCharacteristicWrite;
-Ticker timerMediciones;
 Ticker timerBoton;
 bool clientBLEConectado = false;
+int contadorErrores = 0;
 
+// Cronómetro para no saturar el WiFi
+unsigned long tiempoUltimaMedicion = 0;
+const unsigned long INTERVALO_MEDICION = 500; // Medio segundo
 
 // --- Máquina de estados ---
 typedef enum {
-               INICIALIZACION,
-               MEDICIONES,
-               C_WIFI,
-               ANALISIS_REP,
-               ANALISIS_SERIE,
-               C_APLICACION } estadoMaq_General_t;
+  INICIALIZACION,
+  MEDICIONES,
+  C_WIFI,
+  ANALISIS_REP,
+  ANALISIS_SERIE,
+  C_APLICACION
+} estadoMaq_General_t;
 
 estadoMaq_General_t estadoMaq_General = INICIALIZACION;
-// Sensor local
-float ax_local, ay_local, az_local;
-float gx_local, gy_local, gz_local;
+
+// Sensor local 
+int16_t ax_local, ay_local, az_local;
+int16_t gx_local, gy_local, gz_local;
+
+// Los valores calculados
 float ax_ms2_local, ay_ms2_local, az_ms2_local;
 float inclX_local, inclY_local, inclZ_local;
 
-// Sensor auxiliar (valores recibidos por WiFi)
+// Sensor auxiliar 
 float ax_aux, ay_aux, az_aux;
 float gx_aux, gy_aux, gz_aux;
 float ax_ms2_aux, ay_ms2_aux, az_ms2_aux;
 float inclX_aux, inclY_aux, inclZ_aux;
 
-// Valores estándar (calibración del local)
+// Valores estándar
 float std_ax, std_ay, std_az;
 float std_inclX, std_inclY, std_inclZ;
 bool estandarCalibrado = false;
 String resultadoValidacion = "";
+int segundosBoton = 0;
 
 #define PIN_BOTON 0
 #define PIN_LED_R 2
@@ -58,140 +61,170 @@ const char* serverNameAz = "http://192.168.4.2/Az";
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3";
 
+class MiServerCallback: public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* pServer) {
+      clientBLEConectado = true;
+    }
+    void onDisconnect(NimBLEServer* pServer) {
+      clientBLEConectado = false;
+    }
+};
 
 void setup() {
- Serial.begin(115200);
+  Serial.begin(115200);
+  delay(1000); 
 
-  // I2C y sensor
-  Wire.begin(8,9); // SDA, SCL
-  sensor.initialize();
-  
-  if (sensor.testConnection()) {
-    Serial.println(" Sensor local ok");
-  } else {
-    Serial.println(" Error sensor local");
-  }
-  
-  // Pines
+  // MODO SIMULACIÓN
+  // Wire.begin(8, 9);
+  // sensor.initialize();
+  Serial.println("\n--- INICIANDO SISTEMA ---");
+  Serial.println("MODO PRUEBA: Sensor MPU6050 desactivado/simulado");
+
   pinMode(PIN_BOTON, INPUT_PULLUP);
   pinMode(PIN_LED_R, OUTPUT);
   pinMode(PIN_LED_G, OUTPUT);
   pinMode(PIN_LED_B, OUTPUT);
-  
-  // WiFi
+
+  // --- CONFIGURACIÓN SEGURA DE WIFI (Sin AsyncWebServer) ---
+  Serial.println("Iniciando AP WiFi...");
+  WiFi.mode(WIFI_AP); 
   WiFi.softAP(ssid, password);
-  server.begin();
-  Serial.print(" AP WiFi: ");
-  Serial.println(WiFi.softAPIP());
+  delay(500); 
   
-  // BLE Nimble
+  Serial.print("AP WiFi iniciado correctamente. IP: ");
+  Serial.println(WiFi.softAPIP());
+
   inicializarBLE();
-  timerMediciones.attach(0.01, mediciones);
-  timerBoton.attach(1, segundosBoton);
+  
+  timerBoton.attach(1, funcionTimerBoton); 
 }
+
 void loop() {
   Maq_General();
+
+  if (Serial.available() > 0) {
+    String mensajeTerminal = Serial.readStringUntil('\n');
+    mensajeTerminal.trim();
+    if (mensajeTerminal.length() > 0) {
+      enviarFeedbackBLE(mensajeTerminal);
+      Serial.println("-> Enviado por BLE: " + mensajeTerminal);
+    }
+  }
+
+  delay(10); 
 }
 
 void Maq_General() {
   switch (estadoMaq_General) {
     case INICIALIZACION:
-      digitalWrite(PIN_LED_G, HIGH); // LED verde = calibración
+      digitalWrite(PIN_LED_G, HIGH);  
       if (digitalRead(PIN_BOTON) == LOW) {
-        mediciones();          // tomar una lectura
-        recibirValores();   
-        calibrarEstandar();    // guardar como estándar
+        mediciones();  
+        recibirValores();
+        calibrarEstandar();  
         estandarCalibrado = true;
+        
+        delay(300); 
         estadoMaq_General = MEDICIONES;
       }
       break;
 
     case MEDICIONES:
       digitalWrite(PIN_LED_G, LOW);
-  recibirValores();
-  mediciones();
-  if (estandarCalibrado) {
-    compararConEstandar();
-  }
-  break;
+      
+      if (millis() - tiempoUltimaMedicion >= INTERVALO_MEDICION) {
+        tiempoUltimaMedicion = millis(); 
+        
+        recibirValores();
+        mediciones();
+        if (estandarCalibrado) {
+          compararConEstandar();
+        }
+      }
+
+      if (digitalRead(PIN_BOTON) == LOW) {
+        delay(300); 
+        estadoMaq_General = ANALISIS_REP;
+      }
+      break;
 
     case ANALISIS_REP:
       if (digitalRead(PIN_BOTON) == LOW) {
         Serial.println("Se tocó el botón, terminó la serie.");
+        delay(300);
         estadoMaq_General = ANALISIS_SERIE;
       }
       break;
 
     case ANALISIS_SERIE:
-      segundosBoton = 0; // reset contador
+      segundosBoton = 0;  
       if (digitalRead(PIN_BOTON) == LOW && segundosBoton >= 5000) {
         Serial.println("Botón presionado >5s, apagar sistema.");
         resultadoValidacion = "SERIE TERMINADA: " + String(contadorErrores) + " errores";
         Serial.println(resultadoValidacion);
         estadoMaq_General = C_APLICACION;
       }
-      
       break;
 
     case C_APLICACION:
-    enviarFeedbackBLE(resultadoValidacion);
-  if (digitalRead(PIN_BOTON) == LOW) {
-    estadoMaq_General = INICIALIZACION; 
+      enviarFeedbackBLE(resultadoValidacion);
+      if (digitalRead(PIN_BOTON) == LOW) {
+        delay(300);
+        estadoMaq_General = INICIALIZACION;
+      }
+      break;
   }
-  break;
-
-
 }
+
 void mediciones() {
-  sensor.getAcceleration(&ax_local, &ay_local, &az_local);
-  sensor.getRotation(&gx_local, &gy_local, &gz_local);
+  ax_local = 0;
+  ay_local = 0;
+  az_local = 0; 
+  gx_local = 0;
+  gy_local = 0;
+  gz_local = 0;
 
   ax_ms2_local = (ax_local / 16384.0) * 9.81;
   ay_ms2_local = (ay_local / 16384.0) * 9.81;
   az_ms2_local = (az_local / 16384.0) * 9.81;
 
-  inclX_local = atan2(ax_ms2_local, sqrt(ay_ms2_local*ay_ms2_local + az_ms2_local*az_ms2_local)) * 180.0 / PI;
-  inclY_local = atan2(ay_ms2_local, sqrt(ax_ms2_local*ax_ms2_local + az_ms2_local*az_ms2_local)) * 180.0 / PI;
-  inclZ_local = atan2(az_ms2_local, sqrt(ax_ms2_local*ax_ms2_local + ay_ms2_local*ay_ms2_local)) * 180.0 / PI;
+  inclX_local = atan2(ax_ms2_local, sqrt(ay_ms2_local * ay_ms2_local + az_ms2_local * az_ms2_local)) * 180.0 / PI;
+  inclY_local = atan2(ay_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + az_ms2_local * az_ms2_local)) * 180.0 / PI;
+  inclZ_local = atan2(az_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + ay_ms2_local * ay_ms2_local)) * 180.0 / PI;
 
-  Serial.println("Lectura LOCAL:");
-  Serial.println(String(ax_ms2_local) + "," + String(ay_ms2_local) + "," + String(az_ms2_local) + "," +
-                 String(inclX_local) + "," + String(inclY_local) + "," + String(inclZ_local));
+  Serial.println("Lectura LOCAL SIMULADA:");
+  Serial.println(String(ax_ms2_local) + "," + String(ay_ms2_local) + "," + String(az_ms2_local) + "," + String(inclX_local) + "," + String(inclY_local) + "," + String(inclZ_local));
 }
-
 
 void calibrarEstandar() {
-  std_ax = ax_ms2;
-  std_ay = ay_ms2;
-  std_az = az_ms2;
-  std_inclX = inclX;
-  std_inclY = inclY;
-  std_inclZ = inclZ;
-  Serial.println("Valores estándar guardados ");
+  std_ax = ax_ms2_local;
+  std_ay = ay_ms2_local;
+  std_az = az_ms2_local;
+  std_inclX = inclX_local;
+  std_inclY = inclY_local;
+  std_inclZ = inclZ_local;
+  Serial.println("Valores estándar guardados");
 }
+
 void compararConEstandar() {
   float tol_acc = 2.0;
   float tol_incl = 2.0;
   bool correcto_local = true;
   bool correcto_aux = true;
 
-  // Comparación LOCAL
-  if (abs(ax_ms2_local - std_ax) > tol_acc) { Serial.println("Error LOCAL eje X"); correcto_local = false; }
-  if (abs(ay_ms2_local - std_ay) > tol_acc) { Serial.println("Error LOCAL eje Y"); correcto_local = false; }
-  if (abs(az_ms2_local - std_az) > tol_acc) { Serial.println("Error LOCAL eje Z"); correcto_local = false; }
+  if (abs(ax_ms2_local - std_ax) > tol_acc) correcto_local = false;
+  if (abs(ay_ms2_local - std_ay) > tol_acc) correcto_local = false;
+  if (abs(az_ms2_local - std_az) > tol_acc) correcto_local = false;
+  if (abs(inclX_local - std_inclX) > tol_incl) correcto_local = false;
+  if (abs(inclY_local - std_inclY) > tol_incl) correcto_local = false;
+  if (abs(inclZ_local - std_inclZ) > tol_incl) correcto_local = false;
 
-  if (abs(inclX_local - std_inclX) > tol_incl) { Serial.println("Error LOCAL inclinación X"); correcto_local = false; }
-  if (abs(inclY_local - std_inclY) > tol_incl) { Serial.println("Error LOCAL inclinación Y"); correcto_local = false; }
-  if (abs(inclZ_local - std_inclZ) > tol_incl) { Serial.println("Error LOCAL inclinación Z"); correcto_local = false; }
-
-  // Comparación AUXILIAR
-  if (abs(ax_ms2_aux - std_ax) > tol_acc) { Serial.println("Error AUX eje X"); correcto_aux = false; }
-  if (abs(ay_ms2_aux - std_ay) > tol_acc) { Serial.println("Error AUX eje Y"); correcto_aux = false; }
-  if (abs(az_ms2_aux - std_az) > tol_acc) { Serial.println("Error AUX eje Z"); correcto_aux = false; }
-
-  if (abs(inclX_aux - std_inclX) > tol_incl) { Serial.println("Error AUX inclinación X"); correcto_aux = false; }
-  if (abs(inclY_aux - std_inclY) > tol_incl) { Serial.println("Error AUX inclinación Y"); correcto_aux = false; }
-  if (abs(inclZ_aux - std_inclZ) > tol_incl) { Serial.println("Error AUX inclinación Z"); correcto_aux = false; }
+  if (abs(ax_ms2_aux - std_ax) > tol_acc) correcto_aux = false;
+  if (abs(ay_ms2_aux - std_ay) > tol_acc) correcto_aux = false;
+  if (abs(az_ms2_aux - std_az) > tol_acc) correcto_aux = false;
+  if (abs(inclX_aux - std_inclX) > tol_incl) correcto_aux = false;
+  if (abs(inclY_aux - std_inclY) > tol_incl) correcto_aux = false;
+  if (abs(inclZ_aux - std_inclZ) > tol_incl) correcto_aux = false;
 
   if (correcto_local && correcto_aux) {
     resultadoValidacion = "CORRECTO";
@@ -202,7 +235,6 @@ void compararConEstandar() {
   }
 }
 
-//  función para pedir valores al AUXILIAR
 void recibirValores() {
   String ax = httpGETRequest(serverNameAx);
   String ay = httpGETRequest(serverNameAy);
@@ -212,58 +244,52 @@ void recibirValores() {
   ay_ms2_aux = ay.toFloat();
   az_ms2_aux = az.toFloat();
 
-  inclX_aux = atan2(ax_ms2_aux, sqrt(ay_ms2_aux*ay_ms2_aux + az_ms2_aux*az_ms2_aux)) * 180.0 / PI;
-  inclY_aux = atan2(ay_ms2_aux, sqrt(ax_ms2_aux*ax_ms2_aux + az_ms2_aux*az_ms2_aux)) * 180.0 / PI;
-  inclZ_aux = atan2(az_ms2_aux, sqrt(ax_ms2_aux*ax_ms2_aux + ay_ms2_aux*ay_ms2_aux)) * 180.0 / PI;
-
-  Serial.println("Valores AUXILIAR recibidos:");
-  Serial.println(String(ax_ms2_aux) + "," + String(ay_ms2_aux) + "," + String(az_ms2_aux));
+  inclX_aux = atan2(ax_ms2_aux, sqrt(ay_ms2_aux * ay_ms2_aux + az_ms2_aux * az_ms2_aux)) * 180.0 / PI;
+  inclY_aux = atan2(ay_ms2_aux, sqrt(ax_ms2_aux * ax_ms2_aux + az_ms2_aux * az_ms2_aux)) * 180.0 / PI;
+  inclZ_aux = atan2(az_ms2_aux, sqrt(ax_ms2_aux * ax_ms2_aux + ay_ms2_aux * ay_ms2_aux)) * 180.0 / PI;
 }
+
 void inicializarBLE() {
   NimBLEDevice::init("Techeck_ESP32");
-  NimBLEDevice::setMTU(517);
-
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MiServerCallback());
-
   NimBLEService* pService = pServer->createService("11111111-1111-1111-1111-111111111111");
-
   pCharacteristic = pService->createCharacteristic(
     "22222222-2222-2222-2222-222222222222",
-    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
-  );
-
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+    
   pCharacteristic->setValue("ESP32 listo");
   pService->start();
-
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(pService->getUUID());
-  pAdvertising->setScanResponse(true);
   NimBLEDevice::startAdvertising();
-
-  Serial.println("BLE Nimble listo");
 }
-void segundosBoton() {
+
+void funcionTimerBoton() {
   segundosBoton++;
 }
+
 void enviarFeedbackBLE(const String& mensaje) {
-  if (clientBLEConectado && pCharacteristic != nullptr) {
+  // Sacamos el clientBLEConectado para forzar el envío siempre
+  if (pCharacteristic != nullptr) {
     pCharacteristic->setValue(mensaje.c_str());
     pCharacteristic->notify();
-    Serial.println("BLE feedback: " + mensaje);
+    Serial.println("-> Intentando notificar por BLE: " + mensaje);
   }
 }
 
 String httpGETRequest(const char* serverName) {
+  // Si no hay nadie conectado al AP, devolvemos 0.0 directo
+  if (WiFi.softAPgetStationNum() == 0) {
+    return "0.0";
+  }
+
   HTTPClient http;
   http.begin(serverName);
   int httpResponseCode = http.GET();
-  String payload = "--";
+  String payload = "0.0"; 
   if (httpResponseCode > 0) {
     payload = http.getString();
-  } else {
-    Serial.print("Error code: ");
-    Serial.println(httpResponseCode);
   }
   http.end();
   return payload;
