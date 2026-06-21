@@ -2,6 +2,7 @@
 #include "Wire.h"
 #include "WiFi.h"
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <Ticker.h>
 #include <NimBLEDevice.h>
 
