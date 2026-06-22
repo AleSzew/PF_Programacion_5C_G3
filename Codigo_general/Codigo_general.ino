@@ -1,3 +1,4 @@
+//NO BORRAR COMENTARIOS NUNCA
 #include <MPU6050.h>
 #include "Wire.h"
 #include "WiFi.h"
@@ -10,7 +11,6 @@ MPU6050 sensor;
 NimBLEServer* pServer;
 NimBLECharacteristic* pCharacteristic;
 Ticker timerBoton;
-bool clientBLEConectado = false;
 int contadorErrores = 0;
 
 // Cronómetro para no saturar el WiFi
@@ -62,19 +62,26 @@ const char* serverNameAz = "http://192.168.4.2/Az";
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3";
 
-class MiServerCallback: public NimBLEServerCallbacks {
-    void onConnect(NimBLEServer* pServer) {
-      clientBLEConectado = true;
-    }
-    void onDisconnect(NimBLEServer* pServer) {
-      clientBLEConectado = false;
-    }
+class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* pCharacteristic) override { //ejecuta automaticamente cada vez que llega un mensaje por BLE
+    std::string valor = pCharacteristic->getValue();
+    Serial.print("Recibido BLE: ");
+    Serial.println(valor.c_str());
+
+    int codigo = atoi(valor.c_str());
+    Serial.print("ID recibido: ");
+    Serial.println(codigo);
+
+    // Aquí puedes usar el número recibido.
+    // Por ejemplo:
+    // ejercicioEnCurso = codigo;
+    // calibrarEstandar();
+    // estadoMaq_General = MEDICIONES;
+  }
 };
 
 void setup() {
   Serial.begin(115200);
-  delay(1000); 
-
   // MODO SIMULACIÓN
   // Wire.begin(8, 9);
   // sensor.initialize();
@@ -135,7 +142,6 @@ void Maq_General() {
       
       if (millis() - tiempoUltimaMedicion >= INTERVALO_MEDICION) {
         tiempoUltimaMedicion = millis(); 
-        
         recibirValores();
         mediciones();
         if (estandarCalibrado) {
@@ -253,12 +259,11 @@ void recibirValores() {
 void inicializarBLE() {
   NimBLEDevice::init("Techeck_ESP32");
   pServer = NimBLEDevice::createServer();
-  pServer->setCallbacks(new MiServerCallback());
   NimBLEService* pService = pServer->createService("11111111-1111-1111-1111-111111111111");
-  pCharacteristic = pService->createCharacteristic(
+    pCharacteristic = pService->createCharacteristic(
     "22222222-2222-2222-2222-222222222222",
-    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-    
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+    pCharacteristic->setCallbacks(new MiCharacteristicCallbacks());
   pCharacteristic->setValue("ESP32 listo");
   pService->start();
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
@@ -266,9 +271,6 @@ void inicializarBLE() {
   NimBLEDevice::startAdvertising();
 }
 
-void funcionTimerBoton() {
-  segundosBoton++;
-}
 
 void enviarFeedbackBLE(const String& mensaje) {
   // Sacamos el clientBLEConectado para forzar el envío siempre
@@ -277,6 +279,10 @@ void enviarFeedbackBLE(const String& mensaje) {
     pCharacteristic->notify();
     Serial.println("-> Intentando notificar por BLE: " + mensaje);
   }
+}
+
+void funcionTimerBoton() {
+  segundosBoton++;
 }
 
 String httpGETRequest(const char* serverName) {

@@ -1,16 +1,19 @@
+//NO BORRAR COMENTARIOS NUNCA
+import 'package:codigo_aplicacion/carrito_ejercicios.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 
 class PantallaBluetooth extends StatefulWidget {
-  final String? ejercicioId;
-  const PantallaBluetooth({Key? key, this.ejercicioId}) : super(key: key);
+
+  const PantallaBluetooth({Key? key}) : super(key: key);
 
   @override
   _PantallaBluetoothState createState() => _PantallaBluetoothState();
 }
 
 class _PantallaBluetoothState extends State<PantallaBluetooth> {
+  QualifiedCharacteristic? writeCharacteristic;
   final flutterReactiveBle = FlutterReactiveBle();
   String status = "Esperando";
   String feedback = "Pulsa Escanear para buscar el ESP32";
@@ -38,8 +41,8 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
       feedback = "Buscando dispositivos...";
     });
 
-    scanSub = flutterReactiveBle.scanForDevices(withServices: []).listen(
-      (device) {
+    scanSub = flutterReactiveBle.scanForDevices(withServices: []).listen( //escanea todos los dispositivos
+      (device) { //cuando haya un dispotivio hace lo sigiuiente, anade a una lista
         if (!devices.any((d) => d.id == device.id)) {
           devices.add(device);
         }
@@ -54,7 +57,7 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     );
   }
 
-  void _connectToDevice(DiscoveredDevice device) {
+  void _connectToDevice(DiscoveredDevice device) { 
     scanSub?.cancel();
     setState(() {
       status = "Conectando a ${device.name.isEmpty ? device.id : device.name}";
@@ -62,20 +65,27 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     });
 
     connSub = flutterReactiveBle.connectToDevice(id: device.id).listen(
-      (update) async {
+      (update) async { 
         setState(() {
           status = "Estado: ${update.connectionState}";
         });
 
-        if (update.connectionState == DeviceConnectionState.connected) {
+        if (update.connectionState == DeviceConnectionState.connected) { //si se conecta hace lo siguiente
+          writeCharacteristic = QualifiedCharacteristic(
+            deviceId: device.id,
+            serviceId: serviceUuid,
+            characteristicId: charUuid,
+          );
           final characteristic = QualifiedCharacteristic(
             deviceId: device.id,
             serviceId: serviceUuid,
             characteristicId: charUuid,
           );
-
+          if (ejercicioSeleccionadoId.isNotEmpty) {
+            _sendCommand(ejercicioSeleccionadoId);
+          }
           notifySub = flutterReactiveBle
-              .subscribeToCharacteristic(characteristic)
+              .subscribeToCharacteristic(characteristic) //avisame si hay cambios en la caracteristica
               .listen((data) {
             final message = String.fromCharCodes(data);
             setState(() {
@@ -98,7 +108,27 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
       },
     );
   }
-
+    Future<void> _sendCommand(String command) async {
+    if (writeCharacteristic == null) {
+      setState(() {
+        feedback = "No hay conexión BLE activa";
+      });
+      return;
+    }
+    try {
+      await flutterReactiveBle.writeCharacteristicWithResponse(
+        writeCharacteristic!,
+        value: command.codeUnits,
+      );
+      setState(() {
+        feedback = "Enviado comando: $command";
+      });
+    } catch (error) {
+      setState(() {
+        feedback = "Error al enviar comando";
+      });
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(

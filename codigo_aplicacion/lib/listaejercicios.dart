@@ -103,11 +103,12 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
-                          context.push('/pantallabluetooth');
-                        },
-                        child: const Text('Hacer'),
-                      ),
+                       onPressed: () {
+                      ejercicioSeleccionadoId = id;
+                    context.push('/pantallabluetooth');
+                      },
+                     child: const Text('Hacer'),
+                    ),
                     ),
                   ],
                 ),

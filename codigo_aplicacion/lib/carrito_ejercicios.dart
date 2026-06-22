@@ -31,3 +31,4 @@ final List<Map<String, String>> listaEjercicios = [
 // Carrito: ejercicios que el usuario fue agregando con el botón +.
 // Empieza vacío.
 List<Map<String, String>> carrito = [];
+String ejercicioSeleccionadoId = '';
