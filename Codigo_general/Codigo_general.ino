@@ -63,7 +63,7 @@ const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3";
 
 class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* pCharacteristic) override { //ejecuta automaticamente cada vez que llega un mensaje por BLE
+  void onWrite(NimBLECharacteristic* pCharacteristic) { //ejecuta automaticamente cada vez que llega un mensaje por BLE
     std::string valor = pCharacteristic->getValue();
     Serial.print("Recibido BLE: ");
     Serial.println(valor.c_str());
