@@ -1,20 +1,21 @@
 //--------------------------------------------------MPU6050----------------------
 #include "Wire.h"
-#include "I2Cdev.h"
 #include "MPU6050.h"
 
 MPU6050 sensor;
 
-float ax, ay, az;
-float gx, gy, gz;
+// CORRECCIÓN: Las lecturas crudas deben ser enteros de 16 bits
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
 
+// Las conversiones e inclinaciones sí llevan decimales (float)
 float ax_ms2, ay_ms2, az_ms2;
 float inclX, inclY, inclZ;
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin(8,9); // SDA, SCL
-
+  Wire.begin(6, 7); // SDA en GPIO 6, SCL en GPIO 7 (Asegurate de que coincida con tus cables)
+  Serial.println("hola");
   sensor.initialize();
 
   if (sensor.testConnection()) {
@@ -25,7 +26,7 @@ void setup() {
 }
 
 void loop() {
-  // Lectura cruda
+  // Ahora la librería va a aceptar las variables sin protestar
   sensor.getAcceleration(&ax, &ay, &az);
   sensor.getRotation(&gx, &gy, &gz);
 
@@ -39,7 +40,7 @@ void loop() {
   Serial.print(gy); Serial.print(", ");
   Serial.println(gz);
 
-  // Conversión a m/s²
+  // Conversión a m/s² (Al dividir por 16384.0, Arduino convierte el resultado automáticamente a float)
   ax_ms2 = (ax / 16384.0) * 9.81;
   ay_ms2 = (ay / 16384.0) * 9.81;
   az_ms2 = (az / 16384.0) * 9.81;
