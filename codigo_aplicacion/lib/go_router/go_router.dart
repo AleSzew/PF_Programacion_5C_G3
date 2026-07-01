@@ -5,7 +5,6 @@ import 'package:codigo_aplicacion/screens/login.dart';
 import 'package:codigo_aplicacion/screens/homescreen.dart';
 import 'package:codigo_aplicacion/screens/rutinas.dart';
 import 'package:codigo_aplicacion/screens/estadisticas.dart';
-import 'package:codigo_aplicacion/screens/configuracion.dart';
 import 'package:codigo_aplicacion/screens/ejercicios.dart';
 
 
@@ -25,14 +24,7 @@ final appRouter = GoRouter(
       path: '/rutinas',
       builder: (context, state) => const Rutinas(),
     ),
-    GoRoute(
-      path: '/estadisticas',
-      builder: (context, state) => const Estadisticas(),
-    ),
-    GoRoute(
-      path: '/configuracion',
-      builder: (context, state) => const Configuracion(),
-    ),
+   
     GoRoute(
       path: '/ejercicios',
       builder: (context, state) => const Ejercicios(),

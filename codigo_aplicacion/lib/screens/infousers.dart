@@ -93,12 +93,7 @@ class _InfousersState extends State<Infousers> {
               leading: const Icon(Icons.bar_chart),
               title: const Text("Estadísticas"),
               onTap: () => context.push('/estadisticas'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text("Configuración"),
-              onTap: () => context.push('/configuracion'),
-            ),
+            ),           
           ],
         ),
       ),

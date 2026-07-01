@@ -15,8 +15,8 @@ class Users {
 }
 
 Users miUsuario = Users(
-  name: 'ale',
-  password: 'ale',
+  name: 'Ale',
+  password: 'Ale',
   email: 'ale@gmail.com',
   age: '20',
   weight: '60',

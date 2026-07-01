@@ -43,13 +43,6 @@ class Ejercicios extends StatelessWidget {
                 context.push('/estadisticas');
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Configuración'),
-              onTap: () {
-                context.push('/configuracion');
-              },
-            ),
           ],
         ),
       ),

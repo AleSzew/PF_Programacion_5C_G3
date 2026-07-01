@@ -42,11 +42,6 @@ class _EstadisticasState extends State<Estadisticas> {
               title: const Text("Estadísticas"),
               onTap: () => context.push('/estadisticas'),
             ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text("Configuración"),
-              onTap: () => context.push('/configuracion'),
-            ),
           ],
         ),
       ),

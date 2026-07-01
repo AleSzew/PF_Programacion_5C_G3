@@ -65,13 +65,6 @@ class _RutinasState extends State<Rutinas> {
                 context.push('/estadisticas');
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Configuración'),
-              onTap: () {
-                context.push('/configuracion');
-              },
-            ),
           ],
         ),
       ),
@@ -106,6 +99,7 @@ class _RutinasState extends State<Rutinas> {
                           children: [
                             Expanded(
                               child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
                                 onPressed: () async {
                                   Uri link = Uri.parse(video);
                                   if (await canLaunchUrl(link)) {
@@ -121,6 +115,7 @@ class _RutinasState extends State<Rutinas> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
                                 onPressed: () {
                                   carrito.removeAt(indice);
                                   setState(() {});
@@ -131,6 +126,7 @@ class _RutinasState extends State<Rutinas> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
                                 onPressed: () {
                                   context.push('/pantallabluetooth');
                                 },

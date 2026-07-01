@@ -43,11 +43,6 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text("Estadísticas"),
               onTap: () => context.push('/estadisticas'),
             ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text("Configuración"),
-              onTap: () => context.push('/configuracion'),
-            ),
           ],
         ),
       ),
@@ -63,20 +58,29 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Center(
-            child: ElevatedButton(
-              onPressed: () => context.push('/rutinas'),
-              child: const Text(
-                "Nueva Rutina",
+            child: SizedBox(
+              height: 30,
+              width: 450,
+              child: ElevatedButton(
+                onPressed: () => context.push('/rutinas'),
+                child: const Text(
+                  "Nueva Rutina",
+                ),
               ),
             ),
           ),
-          ElevatedButton(
-            onPressed: () async {
-              await context.push('/infousers');
-              setState(() {});
-            },
-            child: const Text(
-              "Por favor complete su peso y valores aqui",
+          SizedBox(height: 10,),
+          SizedBox(
+            height: 30,
+            width: 450,
+            child: ElevatedButton(
+              onPressed: () async {
+                await context.push('/infousers');
+                setState(() {});
+              },
+              child: const Text(
+                "Por favor complete su peso y valores aquí",
+              ),
             ),
           ),
         ],
