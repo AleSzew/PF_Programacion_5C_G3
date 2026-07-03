@@ -50,10 +50,10 @@ bool estandarCalibrado = false;
 String resultadoValidacion = "";
 int segundosBoton = 0;
 
-#define PIN_BOTON 0
-#define PIN_LED_R 2
-#define PIN_LED_G 4
-#define PIN_LED_B 5
+#define PIN_BOTON 1
+#define PIN_LED_R 9
+#define PIN_LED_G 20
+#define PIN_LED_B 10
 
 const char* serverNameAx = "http://192.168.4.2/Ax";
 const char* serverNameAy = "http://192.168.4.2/Ay";
@@ -72,22 +72,13 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
     Serial.print("ID recibido: ");
     Serial.println(codigo);
 
-    // Aquí puedes usar el número recibido.
-    // Por ejemplo:
-    // ejercicioEnCurso = codigo;
-    // calibrarEstandar();
-    // estadoMaq_General = MEDICIONES;
   }
 };
 
 void setup() {
   Serial.begin(115200);
-  // MODO SIMULACIÓN
-  // Wire.begin(8, 9);
-  // sensor.initialize();
-  Serial.println("\n--- INICIANDO SISTEMA ---");
-  Serial.println("MODO PRUEBA: Sensor MPU6050 desactivado/simulado");
-
+  Wire.begin(6, 7);
+  sensor.initialize();
   pinMode(PIN_BOTON, INPUT_PULLUP);
   pinMode(PIN_LED_R, OUTPUT);
   pinMode(PIN_LED_G, OUTPUT);
@@ -125,8 +116,10 @@ void loop() {
 void Maq_General() {
   switch (estadoMaq_General) {
     case INICIALIZACION:
+    Serial.println("Estado inicializacion");
       digitalWrite(PIN_LED_G, HIGH);  
       if (digitalRead(PIN_BOTON) == LOW) {
+        Serial.println("se toco el boton ir a funciones app");
         mediciones();  
         recibirValores();
         calibrarEstandar();  
@@ -138,6 +131,7 @@ void Maq_General() {
       break;
 
     case MEDICIONES:
+    Serial.println("Estado mediciones");
       digitalWrite(PIN_LED_G, LOW);
       
       if (millis() - tiempoUltimaMedicion >= INTERVALO_MEDICION) {
@@ -156,6 +150,7 @@ void Maq_General() {
       break;
 
     case ANALISIS_REP:
+    Serial.println("Estado analisis rep");
       if (digitalRead(PIN_BOTON) == LOW) {
         Serial.println("Se tocó el botón, terminó la serie.");
         delay(300);
@@ -164,6 +159,7 @@ void Maq_General() {
       break;
 
     case ANALISIS_SERIE:
+    Serial.println("Estado analisis serie");
       segundosBoton = 0;  
       if (digitalRead(PIN_BOTON) == LOW && segundosBoton >= 5000) {
         Serial.println("Botón presionado >5s, apagar sistema.");
@@ -174,6 +170,7 @@ void Maq_General() {
       break;
 
     case C_APLICACION:
+    Serial.println("Estado conexion apñicacion");
       enviarFeedbackBLE(resultadoValidacion);
       if (digitalRead(PIN_BOTON) == LOW) {
         delay(300);
@@ -214,6 +211,7 @@ void calibrarEstandar() {
 }
 
 void compararConEstandar() {
+  Serial.println("Comparacion con estanadre");
   float tol_acc = 2.0;
   float tol_incl = 2.0;
   bool correcto_local = true;
@@ -257,6 +255,7 @@ void recibirValores() {
 }
 
 void inicializarBLE() {
+  Serial.println("inicilizar ble");
   NimBLEDevice::init("Techeck_ESP32");
   pServer = NimBLEDevice::createServer();
   NimBLEService* pService = pServer->createService("11111111-1111-1111-1111-111111111111");
@@ -273,6 +272,7 @@ void inicializarBLE() {
 
 
 void enviarFeedbackBLE(const String& mensaje) {
+  Serial.println("Enviara feedback");
   // Sacamos el clientBLEConectado para forzar el envío siempre
   if (pCharacteristic != nullptr) {
     pCharacteristic->setValue(mensaje.c_str());
