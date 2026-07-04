@@ -1,6 +1,7 @@
 import 'package:codigo_aplicacion/entities/users.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/cupertino.dart';
 
 class Infousers extends StatefulWidget {
   const Infousers({super.key});
@@ -63,7 +64,44 @@ class _InfousersState extends State<Infousers> {
 
     context.pop();
   }
+  void _mostrarSelectorEdad() {
+    final edades = [for (var i = 13; i <= 120; i++) i];
 
+    // Leemos el TextField. Si no hay nada, por defecto usa 13.
+    int edadActual = int.tryParse(ageController.text) ?? 13;
+    
+    // Vemos en qué posición de la lista está ese número. Si da error, va a la posición 0.
+    int indiceInicial = edades.indexOf(edadActual);
+    if (indiceInicial == -1) indiceInicial = 0;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return Container(
+          height: 250,
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: CupertinoPicker(
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            itemExtent: 40.0,
+            scrollController: FixedExtentScrollController(initialItem: indiceInicial),
+            onSelectedItemChanged: (int index) {
+              setState(() {
+                ageController.text = edades[index].toString();
+              });
+            },
+            children: edades.map((edad) {
+              return Center(
+                child: Text(
+                  edad.toString(),
+                  style: const TextStyle(fontSize: 22),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,8 +146,12 @@ class _InfousersState extends State<Infousers> {
             ),
             TextField(
               controller: ageController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Edad"),
+              readOnly: true, // <-- ¡Clave! Bloquea el teclado de Chrome/celular
+              onTap: _mostrarSelectorEdad, // <-- ¡Clave! Hace que se abra tu panel
+              decoration: const InputDecoration(
+                labelText: "Edad",
+                suffixIcon: Icon(Icons.arrow_drop_down), // Una flechita para que se entienda que es un menú
+              ),
             ),
             TextField(
               controller: weightController,

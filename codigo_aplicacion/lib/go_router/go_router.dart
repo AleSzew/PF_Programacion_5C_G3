@@ -24,7 +24,10 @@ final appRouter = GoRouter(
       path: '/rutinas',
       builder: (context, state) => const Rutinas(),
     ),
-   
+   GoRoute(
+      path: '/estadisticas',
+      builder: (context, state) => const Estadisticas(),
+    ),
     GoRoute(
       path: '/ejercicios',
       builder: (context, state) => const Ejercicios(),
