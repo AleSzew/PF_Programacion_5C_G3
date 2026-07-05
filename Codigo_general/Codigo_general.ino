@@ -1,4 +1,4 @@
-//NO BORRAR COMENTARIOS NUNCA
+//NO BORRAR COMENTARIOS NUNCA C3 2026
 #include <MPU6050.h>
 #include "Wire.h"
 #include "WiFi.h"
@@ -10,24 +10,39 @@
 MPU6050 sensor;
 NimBLEServer* pServer;
 NimBLECharacteristic* pCharacteristic;
+
+// Tickers 
 Ticker timerBoton;
+Ticker timerAntirrebote; 
+Ticker timerMedicion;
+
 int contadorErrores = 0;
 
-// Cronómetro para no saturar el WiFi
-unsigned long tiempoUltimaMedicion = 0;
-const unsigned long INTERVALO_MEDICION = 500; // Medio segundo
+// Cronómetro manejado por Ticker para no saturar el WiFi
+bool flagMedicion = false;
+int INTERVALO_MEDICION = 100; // 1000 ms 
 
-// --- Máquina de estados ---
+// --- Máquinas de estados ---
 typedef enum {
   INICIALIZACION,
   MEDICIONES,
-  C_WIFI,
-  ANALISIS_REP,
   ANALISIS_SERIE,
   C_APLICACION
 } estadoMaq_General_t;
 
 estadoMaq_General_t estadoMaq_General = INICIALIZACION;
+
+// --- Variables y Máquina de Antirrebote ---
+typedef enum {
+  ESPERA, 
+  CONFIRMACION, 
+  LIBERACION
+} estadoAntirrebote_t;
+
+estadoAntirrebote_t estadoBoton = ESPERA;
+ int msBoton = 0; // Se incrementa cada 1 milisegundo gracias al Ticker
+bool flagBoton = false;
+#define T_REBOTE 10 // 10 milisegundos es el estandar para eliminar el ruido mecánico
 
 // Sensor local 
 int16_t ax_local, ay_local, az_local;
@@ -55,15 +70,19 @@ int segundosBoton = 0;
 #define PIN_LED_G 20
 #define PIN_LED_B 10
 
+// Direcciones del servidor HTTP del dispositivo auxiliar
 const char* serverNameAx = "http://192.168.4.2/Ax";
 const char* serverNameAy = "http://192.168.4.2/Ay";
 const char* serverNameAz = "http://192.168.4.2/Az";
 
+// Credenciales de la red WiFi que este ESP32 va a crear
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3";
 
+// Clase para manejar los eventos de recepcion de Bluetooth Low Energy (BLE)
 class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* pCharacteristic) { //ejecuta automaticamente cada vez que llega un mensaje por BLE
+  void onWrite(NimBLECharacteristic* pCharacteristic) { 
+    // Esta funcion se ejecuta de forma asincrona cada vez que el cliente BLE envia un dato
     std::string valor = pCharacteristic->getValue();
     Serial.print("Recibido BLE: ");
     Serial.println(valor.c_str());
@@ -71,7 +90,6 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
     int codigo = atoi(valor.c_str());
     Serial.print("ID recibido: ");
     Serial.println(codigo);
-
   }
 };
 
@@ -84,96 +102,123 @@ void setup() {
   pinMode(PIN_LED_G, OUTPUT);
   pinMode(PIN_LED_B, OUTPUT);
 
-  // --- CONFIGURACIÓN SEGURA DE WIFI (Sin AsyncWebServer) ---
+  // --- CONFIGURACIÓN SEGURA DE WIFI ---
   Serial.println("Iniciando AP WiFi...");
+  
+  // Se configura el ESP32 como Access Point (Punto de Acceso)
+  // Esto significa que crea su propia red WiFi a la que otros se pueden conectar, en lugar de conectarse a un router.
   WiFi.mode(WIFI_AP); 
   WiFi.softAP(ssid, password);
   delay(500); 
   
+  // Por defecto, la IP del Access Point en el ESP32 suele ser 192.168.4.1
   Serial.print("AP WiFi iniciado correctamente. IP: ");
   Serial.println(WiFi.softAPIP());
 
   inicializarBLE();
   
+  // timerBoton cuenta de a 1 segundo para la pulsacion larga
   timerBoton.attach(1, funcionTimerBoton); 
+  
+  // timerAntirrebote cuenta de a 1 milisegundo (usamos attach_ms) para el debounce
+  timerAntirrebote.attach_ms(1, funcionTimerAntirrebote);
+  // timerMedicion se ejecuta cada 100ms para habilitar la lectura de sensores
+  timerMedicion.attach_ms(INTERVALO_MEDICION, funcionTimerMedicion);
 }
 
 void loop() {
+  // Ejecutamos la lectura limpia del boton antes de la maquina general
+  maquinaAntirrebote();
   Maq_General();
+  
+}
 
-  if (Serial.available() > 0) {
-    String mensajeTerminal = Serial.readStringUntil('\n');
-    mensajeTerminal.trim();
-    if (mensajeTerminal.length() > 0) {
-      enviarFeedbackBLE(mensajeTerminal);
-      Serial.println("-> Enviado por BLE: " + mensajeTerminal);
-    }
+// === MÁQUINA DE ESTADOS DEL ANTIRREBOTE ===
+void maquinaAntirrebote() {
+  bool lecturaBoton = digitalRead(PIN_BOTON); // Con INPUT_PULLUP, LOW es presionado
+
+  switch (estadoBoton) {
+    case ESPERA:
+      if (lecturaBoton == LOW) {  
+        msBoton = 0; // Reiniciamos el contador de milisegundos
+        estadoBoton = CONFIRMACION;
+      }
+      break;
+      
+    case CONFIRMACION:
+      // Esperamos que el Ticker haya sumado T_REBOTE (10) milisegundos
+      if (msBoton >= T_REBOTE) {
+        if (lecturaBoton == LOW) {
+          estadoBoton = LIBERACION;
+        } else {
+          estadoBoton = ESPERA; // Falsa alarma, volvemos a inicio
+        }
+      }
+      break;
+      
+    case LIBERACION:
+      if (lecturaBoton == HIGH) { // El usuario soltó el botón
+        flagBoton = true; // Habilitamos la bandera para que la máquina general actúe
+        estadoBoton = ESPERA;
+      }
+      break;
   }
-
-  delay(10); 
 }
 
 void Maq_General() {
   switch (estadoMaq_General) {
     case INICIALIZACION:
-    Serial.println("Estado inicializacion");
+      Serial.println("Estado inicializacion");
       digitalWrite(PIN_LED_G, HIGH);  
-      if (digitalRead(PIN_BOTON) == LOW) {
-        Serial.println("se toco el boton ir a funciones app");
+      if (flagBoton) {
+        flagBoton = false; // Importante apagar el flag una vez usado
+        Serial.println("se toco el boton ir a funciones");
         mediciones();  
         recibirValores();
         calibrarEstandar();  
         estandarCalibrado = true;
-        
-        delay(300); 
+  
         estadoMaq_General = MEDICIONES;
       }
       break;
 
     case MEDICIONES:
-    Serial.println("Estado mediciones");
+      Serial.println("Estado mediciones");
       digitalWrite(PIN_LED_G, LOW);
       
-      if (millis() - tiempoUltimaMedicion >= INTERVALO_MEDICION) {
-        tiempoUltimaMedicion = millis(); 
+      if (flagMedicion) {
+        flagMedicion = false; //cada 100 ms se lee el sensor y se comparan los valores con el estandar
         recibirValores();
         mediciones();
         if (estandarCalibrado) {
           compararConEstandar();
         }
       }
-
-      if (digitalRead(PIN_BOTON) == LOW) {
-        delay(300); 
-        estadoMaq_General = ANALISIS_REP;
-      }
-      break;
-
-    case ANALISIS_REP:
-    Serial.println("Estado analisis rep");
-      if (digitalRead(PIN_BOTON) == LOW) {
-        Serial.println("Se tocó el botón, terminó la serie.");
-        delay(300);
+      if (flagBoton) {
+        flagBoton = false;
         estadoMaq_General = ANALISIS_SERIE;
       }
       break;
 
     case ANALISIS_SERIE:
-    Serial.println("Estado analisis serie");
-      segundosBoton = 0;  
-      if (digitalRead(PIN_BOTON) == LOW && segundosBoton >= 5000) {
+      Serial.println("Estado analisis serie");
+      // Evalúa pulsación mantenida de 5 segundos, gestionada por funcionTimerBoton.
+      if (segundosBoton >= 5) {
         Serial.println("Botón presionado >5s, apagar sistema.");
         resultadoValidacion = "SERIE TERMINADA: " + String(contadorErrores) + " errores";
         Serial.println(resultadoValidacion);
+        // Reiniciamos variables y  botón
+        segundosBoton = 0; 
+        flagBoton = false; 
         estadoMaq_General = C_APLICACION;
       }
       break;
 
     case C_APLICACION:
-    Serial.println("Estado conexion apñicacion");
+      Serial.println("Estado conexion aplicacion");
       enviarFeedbackBLE(resultadoValidacion);
-      if (digitalRead(PIN_BOTON) == LOW) {
-        delay(300);
+      if (flagBoton) {
+        flagBoton = false;
         estadoMaq_General = INICIALIZACION;
       }
       break;
@@ -181,12 +226,9 @@ void Maq_General() {
 }
 
 void mediciones() {
-  ax_local = 0;
-  ay_local = 0;
-  az_local = 0; 
-  gx_local = 0;
-  gy_local = 0;
-  gz_local = 0;
+  // Ahora sí leemos los valores reales del acelerómetro y giroscopio
+  sensor.getAcceleration(&ax_local, &ay_local, &az_local);
+  sensor.getRotation(&gx_local, &gy_local, &gz_local);
 
   ax_ms2_local = (ax_local / 16384.0) * 9.81;
   ay_ms2_local = (ay_local / 16384.0) * 9.81;
@@ -196,7 +238,7 @@ void mediciones() {
   inclY_local = atan2(ay_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + az_ms2_local * az_ms2_local)) * 180.0 / PI;
   inclZ_local = atan2(az_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + ay_ms2_local * ay_ms2_local)) * 180.0 / PI;
 
-  Serial.println("Lectura LOCAL SIMULADA:");
+  Serial.println("Lectura LOCAL REAL:");
   Serial.println(String(ax_ms2_local) + "," + String(ay_ms2_local) + "," + String(az_ms2_local) + "," + String(inclX_local) + "," + String(inclY_local) + "," + String(inclZ_local));
 }
 
@@ -211,7 +253,7 @@ void calibrarEstandar() {
 }
 
 void compararConEstandar() {
-  Serial.println("Comparacion con estanadre");
+  Serial.println("Comparacion con estandar");
   float tol_acc = 2.0;
   float tol_incl = 2.0;
   bool correcto_local = true;
@@ -237,6 +279,7 @@ void compararConEstandar() {
   } else {
     resultadoValidacion = "INCORRECTO";
     Serial.println("Movimiento INCORRECTO");
+    contadorErrores++;
   }
 }
 
@@ -256,45 +299,71 @@ void recibirValores() {
 
 void inicializarBLE() {
   Serial.println("inicilizar ble");
+  // Se inicializa el dispositivo con el nombre que vera el usuario al escanear
   NimBLEDevice::init("Techeck_ESP32");
   pServer = NimBLEDevice::createServer();
+  
+  // Se crea un servicio BLE. El UUID funciona como un identificador unico para que la app sepa que hace este servicio.
   NimBLEService* pService = pServer->createService("11111111-1111-1111-1111-111111111111");
-    pCharacteristic = pService->createCharacteristic(
+  
+  // Dentro del servicio se crea una caracteristica. Se configuran permisos:
+  // READ (leer), WRITE (escribir hacia el ESP32) y NOTIFY (el ESP32 puede enviar datos a la app sin que esta los pida).
+  pCharacteristic = pService->createCharacteristic(
     "22222222-2222-2222-2222-222222222222",
     NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-    pCharacteristic->setCallbacks(new MiCharacteristicCallbacks());
+    
+  pCharacteristic->setCallbacks(new MiCharacteristicCallbacks());
   pCharacteristic->setValue("ESP32 listo");
   pService->start();
+  
+  // El Advertising permite que el dispositivo empiece a emitir su presencia para que los telefonos lo puedan encontrar.
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(pService->getUUID());
   NimBLEDevice::startAdvertising();
 }
 
-
 void enviarFeedbackBLE(const String& mensaje) {
   Serial.println("Enviara feedback");
-  // Sacamos el clientBLEConectado para forzar el envío siempre
+  // Verifica si el puntero de la caracteristica existe antes de intentar enviar datos, evitando reseteos por fallos de memoria.
   if (pCharacteristic != nullptr) {
     pCharacteristic->setValue(mensaje.c_str());
+    // El metodo notify() empuja el mensaje actualizado a cualquier cliente que este suscrito.
     pCharacteristic->notify();
     Serial.println("-> Intentando notificar por BLE: " + mensaje);
   }
 }
 
+// Función ejecutada por el timerBoton cada 1 segundo (Pulsación larga)
 void funcionTimerBoton() {
-  segundosBoton++;
+  if (digitalRead(PIN_BOTON) == LOW) {
+    segundosBoton++;
+  } else {
+    segundosBoton = 0;
+  }
+}
+
+// Función ejecutada por el timerAntirrebote cada 1 milisegundo (Debounce corto)
+void funcionTimerAntirrebote() {
+  msBoton++;
+}
+// Función ejecutada por el timerMedicion cada 100 milisegundos
+void funcionTimerMedicion() {
+  flagMedicion = true;
 }
 
 String httpGETRequest(const char* serverName) {
-  // Si no hay nadie conectado al AP, devolvemos 0.0 directo
+  // softAPgetStationNum() devuelve la cantidad de dispositivos conectados a la red del ESP32.
+  // Sirve para no perder tiempo haciendo peticiones HTTP si sabemos que el dispositivo auxiliar ni siquiera esta conectado por WiFi.
   if (WiFi.softAPgetStationNum() == 0) {
     return "0.0";
   }
-
   HTTPClient http;
   http.begin(serverName);
+  // Realiza la peticion GET de manera sincrona (bloquea el codigo hasta obtener respuesta o timeout).
   int httpResponseCode = http.GET();
   String payload = "0.0"; 
+  
+  // Un codigo mayor a 0 indica que el servidor respondio (ejemplo: 200 OK).
   if (httpResponseCode > 0) {
     payload = http.getString();
   }
