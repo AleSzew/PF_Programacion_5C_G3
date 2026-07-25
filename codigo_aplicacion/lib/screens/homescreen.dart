@@ -58,16 +58,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Center(
-            child: SizedBox(
-              height: 30,
-              width: 450,
               child: ElevatedButton(
                 onPressed: () => context.push('/rutinas'),
                 child: const Text(
                   "Nueva Rutina",
                 ),
               ),
-            ),
+            
           ),
           SizedBox(height: 10,),
           SizedBox(

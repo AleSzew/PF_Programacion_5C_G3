@@ -68,7 +68,7 @@ class _RutinasState extends State<Rutinas> {
           ],
         ),
       ),
-      body: carrito.length == 0
+      body: carrito.isEmpty
           ? const Center(
               child: Text('No tienes ejercicios en tu rutina'),
             )
