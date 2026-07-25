@@ -78,7 +78,7 @@ const char* serverNameAz = "http://192.168.4.2/Az";
 // Credenciales de la red WiFi que este ESP32 va a crear
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3";
-
+int codigo ;
 // Clase para manejar los eventos de recepcion de Bluetooth Low Energy (BLE)
 class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pCharacteristic) { 
@@ -86,8 +86,7 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
     std::string valor = pCharacteristic->getValue();
     Serial.print("Recibido BLE: ");
     Serial.println(valor.c_str());
-
-    int codigo = atoi(valor.c_str());
+    codigo = atoi(valor.c_str());
     Serial.print("ID recibido: ");
     Serial.println(codigo);
   }
@@ -168,7 +167,7 @@ void maquinaAntirrebote() {
 void Maq_General() {
   switch (estadoMaq_General) {
     case INICIALIZACION:
-      Serial.println("Estado inicializacion");
+      //Serial.println("Estado inicializacion");
       digitalWrite(PIN_LED_G, HIGH);  
       if (flagBoton) {
         flagBoton = false; // Importante apagar el flag una vez usado
@@ -177,8 +176,13 @@ void Maq_General() {
         recibirValores();
         calibrarEstandar();  
         estandarCalibrado = true;
-  
         estadoMaq_General = MEDICIONES;
+        if (Serial.available() > 0){
+          String comando = Serial.readStringUntil('\n');
+          if(comando == "pasar estado"){
+           estadoMaq_General = MEDICIONES;
+          } 
+        }
       }
       break;
 
@@ -198,6 +202,12 @@ void Maq_General() {
         flagBoton = false;
         estadoMaq_General = ANALISIS_SERIE;
       }
+      if (Serial.available() > 0){
+          String comando = Serial.readStringUntil('\n');
+          if(comando == "pasar estado"){
+           estadoMaq_General = ANALISIS_SERIE;
+          } 
+        }
       break;
 
     case ANALISIS_SERIE:
@@ -211,6 +221,12 @@ void Maq_General() {
         segundosBoton = 0; 
         flagBoton = false; 
         estadoMaq_General = C_APLICACION;
+        if (Serial.available() > 0){
+          String comando = Serial.readStringUntil('\n');
+          if(comando == "pasar estado"){
+           estadoMaq_General = C_APLICACION;
+          } 
+        }
       }
       break;
 

@@ -4,8 +4,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 
-class PantallaBluetooth extends StatefulWidget {
+// ---------------------------------------------------------
+// VARIABLES GLOBALES (Mantienen la conexión viva en iOS/Android)
+// ---------------------------------------------------------
+final flutterReactiveBleGlobal = FlutterReactiveBle();
+StreamSubscription<ConnectionStateUpdate>? connSubGlobal;
+QualifiedCharacteristic? caracteristicaGlobal;
+bool yaEstaConectado = false; 
 
+final Uuid serviceUuid = Uuid.parse("11111111-1111-1111-1111-111111111111");
+final Uuid charUuid = Uuid.parse("22222222-2222-2222-2222-222222222222");
+// ---------------------------------------------------------
+
+class PantallaBluetooth extends StatefulWidget {
   const PantallaBluetooth({Key? key}) : super(key: key);
 
   @override
@@ -13,24 +24,58 @@ class PantallaBluetooth extends StatefulWidget {
 }
 
 class _PantallaBluetoothState extends State<PantallaBluetooth> {
-  QualifiedCharacteristic? writeCharacteristic;
-  final flutterReactiveBle = FlutterReactiveBle();
   String status = "Esperando";
   String feedback = "Pulsa Escanear para buscar el ESP32";
   List<DiscoveredDevice> devices = [];
   StreamSubscription<DiscoveredDevice>? scanSub;
-  StreamSubscription<ConnectionStateUpdate>? connSub;
-  StreamSubscription<List<int>>? notifySub;
+  StreamSubscription<List<int>>? notifySub; // Escucha las respuestas del ESP32
 
-  final Uuid serviceUuid = Uuid.parse("11111111-1111-1111-1111-111111111111");
-  final Uuid charUuid = Uuid.parse("22222222-2222-2222-2222-222222222222");
+  @override
+  void initState() {
+    super.initState();
+    
+    // Si volvemos a esta pantalla y ya estábamos conectados...
+    if (yaEstaConectado && caracteristicaGlobal != null) {
+      status = "Conectado";
+      feedback = "Conexión mantenida con el ESP32";
+      
+      // CRUCIAL: Volvemos a escuchar los mensajes del ESP32 al entrar a la pantalla
+      _listenToCharacteristic();
+
+      // Mandamos el comando del ejercicio si hay uno listo
+      if (ejercicioSeleccionadoId.isNotEmpty) {
+        _sendCommand(ejercicioSeleccionadoId);
+      }
+    }
+  }
 
   @override
   void dispose() {
     scanSub?.cancel();
-    connSub?.cancel();
-    notifySub?.cancel();
+    notifySub?.cancel(); // Dejamos de actualizar la pantalla para no causar crasheos
+    // IMPORTANTE: NO cancelamos 'connSubGlobal' para que el iPhone no corte el Bluetooth
     super.dispose();
+  }
+
+  // Separé la escucha en una función para poder llamarla desde initState y connectToDevice
+  void _listenToCharacteristic() {
+    notifySub?.cancel();
+    notifySub = flutterReactiveBleGlobal
+        .subscribeToCharacteristic(caracteristicaGlobal!)
+        .listen((data) {
+      if (!mounted) return; // SEGURO ANTI-CRASHEOS: Si la pantalla ya se cerró, ignora el mensaje
+      
+      final message = String.fromCharCodes(data);
+      setState(() {
+        feedback = message;
+        status = "Conectado";
+      });
+    }, onError: (error) {
+      if (!mounted) return;
+      setState(() {
+        feedback = "Error al recibir datos";
+      });
+    });
   }
 
   void _startScan() {
@@ -41,14 +86,17 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
       feedback = "Buscando dispositivos...";
     });
 
-    scanSub = flutterReactiveBle.scanForDevices(withServices: []).listen( //escanea todos los dispositivos
-      (device) { //cuando haya un dispotivio hace lo sigiuiente, anade a una lista
+    scanSub = flutterReactiveBleGlobal.scanForDevices(withServices: []).listen(
+      (device) {
         if (!devices.any((d) => d.id == device.id)) {
-          devices.add(device);
+          if (!mounted) return;
+          setState(() {
+            devices.add(device);
+          });
         }
-        setState(() {});
       },
       onError: (error) {
+        if (!mounted) return;
         setState(() {
           status = "Error escaneo";
           feedback = "Error al buscar dispositivos";
@@ -64,43 +112,43 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
       feedback = "Intentando conectar...";
     });
 
-    connSub = flutterReactiveBle.connectToDevice(id: device.id).listen(
+    connSubGlobal?.cancel(); // Corta cualquier intento de conexión anterior
+    connSubGlobal = flutterReactiveBleGlobal.connectToDevice(id: device.id).listen(
       (update) async { 
+        if (!mounted) return; // Seguro anti-crasheos
+        
         setState(() {
           status = "Estado: ${update.connectionState}";
         });
 
-        if (update.connectionState == DeviceConnectionState.connected) { //si se conecta hace lo siguiente
-          writeCharacteristic = QualifiedCharacteristic(
+        if (update.connectionState == DeviceConnectionState.connected) {
+          yaEstaConectado = true;
+          
+          caracteristicaGlobal = QualifiedCharacteristic(
             deviceId: device.id,
             serviceId: serviceUuid,
             characteristicId: charUuid,
           );
-          final characteristic = QualifiedCharacteristic(
-            deviceId: device.id,
-            serviceId: serviceUuid,
-            characteristicId: charUuid,
-          );
+
+          // Iniciamos la escucha de los mensajes del ESP32
+          _listenToCharacteristic();
+
+          // Si hay un ejercicio, lo mandamos
           if (ejercicioSeleccionadoId.isNotEmpty) {
             _sendCommand(ejercicioSeleccionadoId);
           }
-          notifySub = flutterReactiveBle
-              .subscribeToCharacteristic(characteristic) //avisame si hay cambios en la caracteristica
-              .listen((data) {
-            final message = String.fromCharCodes(data);
-            setState(() {
-              feedback = message;
-              status = "Conectado";
-            });
-          }, onError: (error) {
-            setState(() {
-              status = "Error notificación";
-              feedback = "No se pudo recibir datos";
-            });
+
+        } else if (update.connectionState == DeviceConnectionState.disconnected) {
+          yaEstaConectado = false;
+          if (!mounted) return;
+          setState(() {
+            status = "Desconectado";
+            feedback = "Se perdió la conexión con el ESP32";
           });
         }
       },
       onError: (error) {
+        if (!mounted) return;
         setState(() {
           status = "Error conexión";
           feedback = "No se pudo conectar";
@@ -108,27 +156,33 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
       },
     );
   }
-    Future<void> _sendCommand(String command) async {
-    if (writeCharacteristic == null) {
+
+  Future<void> _sendCommand(String command) async {
+    if (caracteristicaGlobal == null || !yaEstaConectado) {
+      if (!mounted) return;
       setState(() {
         feedback = "No hay conexión BLE activa";
       });
       return;
     }
+    
     try {
-      await flutterReactiveBle.writeCharacteristicWithResponse(
-        writeCharacteristic!,
+      await flutterReactiveBleGlobal.writeCharacteristicWithResponse(
+        caracteristicaGlobal!,
         value: command.codeUnits,
       );
+      if (!mounted) return;
       setState(() {
-        feedback = "Enviado comando: $command";
+        feedback = "¡Haciendo ejercicio! Comando enviado: $command";
       });
     } catch (error) {
+      if (!mounted) return;
       setState(() {
-        feedback = "Error al enviar comando";
+        feedback = "Error al enviar el comando al ESP32";
       });
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -140,9 +194,16 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
             Text("Estado: $status"),
             const SizedBox(height: 10),
             Card(
+              color: yaEstaConectado ? Colors.green.shade100 : Colors.white,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(feedback),
+                child: Text(
+                  feedback, 
+                  style: TextStyle(
+                    fontSize: 16, 
+                    fontWeight: yaEstaConectado ? FontWeight.bold : FontWeight.normal
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 10),
