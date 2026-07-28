@@ -1,5 +1,6 @@
 // Librerías I2C para controlar el MPU6050
 // La librería MPU6050.h necesita I2Cdev.h, y esta necesita Wire.h
+//configurar usb cdc on boot en enabled
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include "Wire.h"
