@@ -67,21 +67,27 @@ class _HomeScreenState extends State<HomeScreen> {
             
           ),
           SizedBox(height: 10,),
-          SizedBox(
-            height: 30,
-            width: 450,
-            child: ElevatedButton(
-              onPressed: () async {
-                await context.push('/infousers');
-                setState(() {});
-              },
-              child: const Text(
-                "Por favor complete su peso y valores aquí",
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20), // Margen a los costados
+            child: SizedBox(
+              width: double.infinity, // Toma todo el ancho disponible respetando el padding
+              child: ElevatedButton(
+                onPressed: () async {
+                  await context.push('/infousers');
+                  setState(() {});
+                },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12), // Margen interno para que no quede tan aplastado
+                  child: Text(
+                    "Por favor complete su peso y valores aquí",
+                    textAlign: TextAlign.center, // Centramos el texto por las dudas
+                  ),
+                ),
               ),
             ),
-          ),
+          )
         ],
-      ),
+      )
     );
   }
 }

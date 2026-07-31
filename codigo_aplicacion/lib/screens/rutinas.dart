@@ -37,7 +37,7 @@ class _RutinasState extends State<Rutinas> {
         child: ListView(
           padding: EdgeInsets.all(5),
           children: [
-             DrawerHeader(
+            DrawerHeader(
               decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
               child: Text(
                 'Menú de navegación',
@@ -97,6 +97,7 @@ class _RutinasState extends State<Rutinas> {
                         const SizedBox(height: 10),
                         Row(
                           children: [
+                            // Botón de Video - Texto centrado y escalado
                             Expanded(
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
@@ -109,10 +110,36 @@ class _RutinasState extends State<Rutinas> {
                                     );
                                   }
                                 },
-                                child: const Text('Video'),
+                                child: const FittedBox(
+                                  // ESTA ES LA CLAVE: El texto se escalará para caber
+                                  child: Text('Video'),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
+
+                            // NUEVO: Botón "+" - Texto grande y escalado
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
+                                onPressed: () {
+                                  // Lógica para añadir una copia de este ejercicio
+                                  carrito.insert(indice + 1, ejercicio);
+                                  setState(() {});
+                                },
+                                child: const FittedBox(
+                                  // Texto grande escalado
+                                  child: Text(
+                                    '+',
+                                    style: TextStyle(
+                                        fontSize: 22, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Botón "-" - Texto grande y escalado
                             Expanded(
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
@@ -120,17 +147,29 @@ class _RutinasState extends State<Rutinas> {
                                   carrito.removeAt(indice);
                                   setState(() {});
                                 },
-                                child: const Text('-'),
+                                child: const FittedBox(
+                                  // Texto grande escalado
+                                  child: Text(
+                                    '-',
+                                    style: TextStyle(
+                                        fontSize: 22, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
+
+                            // Botón "Hacer" - Texto centrado y escalado
                             Expanded(
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
                                 onPressed: () {
                                   context.push('/pantallabluetooth');
                                 },
-                                child: const Text('Hacer'),
+                                child: const FittedBox(
+                                  // Texto escalado
+                                  child: Text('Hacer'),
+                                ),
                               ),
                             ),
                           ],
