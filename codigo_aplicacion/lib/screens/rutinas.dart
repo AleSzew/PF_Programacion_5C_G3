@@ -68,7 +68,7 @@ class _RutinasState extends State<Rutinas> {
           ],
         ),
       ),
-      body: carrito.isEmpty
+      body: carrito.isEmpty //¿El carrito está vacío? (?) Muestra texto sino muestra la lista
           ? const Center(
               child: Text('No tienes ejercicios en tu rutina'),
             )
@@ -76,6 +76,7 @@ class _RutinasState extends State<Rutinas> {
               padding: const EdgeInsets.all(12),
               itemCount: carrito.length,
               itemBuilder: (BuildContext context, int indice) {
+                // Sacamos el ejercicio exacto de la posición actual (indice)
                 Map<String, String> ejercicio = carrito[indice];
                 String nombre = ejercicio['nombre']!;
                 String video = ejercicio['video']!;
@@ -111,33 +112,13 @@ class _RutinasState extends State<Rutinas> {
                                   }
                                 },
                                 child: const FittedBox(
-                                  // ESTA ES LA CLAVE: El texto se escalará para caber
+                                  
                                   child: Text('Video'),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
 
-                            // NUEVO: Botón "+" - Texto grande y escalado
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
-                                onPressed: () {
-                                  // Lógica para añadir una copia de este ejercicio
-                                  carrito.insert(indice + 1, ejercicio);
-                                  setState(() {});
-                                },
-                                child: const FittedBox(
-                                  // Texto grande escalado
-                                  child: Text(
-                                    '+',
-                                    style: TextStyle(
-                                        fontSize: 22, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
 
                             // Botón "-" - Texto grande y escalado
                             Expanded(
