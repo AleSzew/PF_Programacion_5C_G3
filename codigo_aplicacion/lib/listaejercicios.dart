@@ -1,3 +1,4 @@
+//no borrar comentarios
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,12 +18,13 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
       padding: const EdgeInsets.all(12),
       itemCount: listaEjercicios.length,
       itemBuilder: (BuildContext context, int indice) {
-        Map<String, String> ejercicio = listaEjercicios[indice];
+        Map<String, String> ejercicio = listaEjercicios[indice]; //guarda en variable ejercicio el indice del ejercicio
         String nombre = ejercicio['nombre']!;
-        String video = ejercicio['video']!;
+        String video = ejercicio['video']!; //del ejercicio seleccionado se sacan los datos nombre video e id 
         String id = ejercicio['id']!;
 
         bool enCarrito = false;
+        // Revisamos el carrito. Si encontramos el ID, cambiamos la variable a verdadero.
         for (int i = 0; i < carrito.length; i++) {
           if (carrito[i]['id'] == id) {
             enCarrito = true;
@@ -77,11 +79,14 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
+                         
                           for (int i = 0; i < carrito.length; i++) {
                             if (carrito[i]['id'] == id) {
                               return;
+                              // Si ya existe, detenemos la función
                             }
                           }
+                          // Si no existía, lo agregamos a la lista y actualizamos la pantalla.
                           carrito.add(ejercicio);
                           setState(() {});
                         },
@@ -94,6 +99,8 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
+                           // Recorremos la lista de atrás hacia adelante (i--) para evitar errores al eliminar.
+                          // Si encontramos el ID de este ejercicio, lo borramos del carrito.
                           for (int i = carrito.length - 1; i >= 0; i--) {
                             if (carrito[i]['id'] == id) {
                               carrito.removeAt(i);
