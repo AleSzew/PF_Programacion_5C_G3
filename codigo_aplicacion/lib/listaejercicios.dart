@@ -68,7 +68,9 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                             );
                           }
                         },
-                        child: const Text('Video'),
+                        child: const FittedBox(
+                          child: Text('Video'),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -83,7 +85,9 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                           carrito.add(ejercicio);
                           setState(() {});
                         },
-                        child: const Text('+'),
+                        child: const FittedBox(
+                          child: Text('+'),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -97,7 +101,9 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                           }
                           setState(() {});
                         },
-                        child: const Text('-'),
+                        child: const FittedBox(
+                          child: Text('-'),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -107,7 +113,9 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                       ejercicioSeleccionadoId = id;
                     context.push('/pantallabluetooth');
                       },
-                     child: const Text('Hacer'),
+                     child: const FittedBox(
+                       child: Text('Hacer'),
+                     ),
                     ),
                     ),
                   ],
