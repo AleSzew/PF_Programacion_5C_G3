@@ -186,12 +186,21 @@ void mediciones() {
 }
 
 void calibrarEstandar() {
-  std_ax = ax_ms2_local;
-  std_ay = ay_ms2_local;
-  std_az = az_ms2_local;
-  std_inclX = inclX_local;
-  std_inclY = inclY_local;
-  std_inclZ = inclZ_local;
+  if(codigo == 1){
+    
+  }
+  if(codigo == 2){
+    
+  }
+  if(codigo == 3){
+    
+  }
+  if(codigo == 4){
+    
+  }
+  if(codigo == 5){
+    
+  }
 }
 
 void compararConEstandar() {
