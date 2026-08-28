@@ -1,10 +1,10 @@
-#include <WiFi.h>
-#include <WebServer.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
 
 const char* ssid = "ESP32_AP";
 const char* password = "12345678";
 
-WebServer server(80);
+ESP8266WebServer server(80);
 
 void setup() {
   Serial.begin(115200);
@@ -16,7 +16,7 @@ void setup() {
 
   // Endpoint simple
   server.on("/mensaje", []() {
-    server.send(200, "text/plain", "Hola desde el servidor ESP32 ");
+    server.send(200, "text/plain", "Hola desde el servidor ESP-01");
   });
 
   server.begin();

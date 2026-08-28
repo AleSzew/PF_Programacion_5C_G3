@@ -25,9 +25,8 @@ float offset_X, offset_Y, offset_Z;
 
 void calibrarOffsetGlobal() {
   Serial.println("Calibrando sensor, no te muevas...");
-
   float sumaX = 0, sumaY = 0, sumaZ = 0;
-  const int MUESTRAS = 100; // cuantas más muestras, más estable el offset
+  const int MUESTRAS = 100;  // cuantas más muestras, más estable el offset
   for (int i = 0; i < MUESTRAS; i++) {
     int16_t ax, ay, az;
     sensor.getAcceleration(&ax, &ay, &az);
@@ -54,7 +53,7 @@ void calibrarOffsetGlobal() {
 
 // Lee el sensor y actualiza inclX, inclY, inclZ ya con el
 // offset aplicado. Se llama en cada vuelta del loop().
-void leerInclinacion() {
+void leerInclinacion() { 
   int16_t ax, ay, az;
   sensor.getAcceleration(&ax, &ay, &az);
 
@@ -87,18 +86,18 @@ float valorEje(uint8_t eje) {
 // DEFINICIÓN DE UN EJERCICIO
 // ============================================================
 struct Ejercicio {
-  const char* nombre;
-  uint8_t ejePrincipal;   // eje que define el movimiento (ej: Y en curl)
-  float minAngulo;        // se llena con la calibración
-  float maxAngulo;        // se llena con la calibración
+  const char *nombre;
+  uint8_t ejePrincipal;  // eje que define el movimiento (ej: Y en curl)
+  float minAngulo;       // se llena con la calibración
+  float maxAngulo;       // se llena con la calibración
 
-  uint8_t ejeSecundario;  // eje que NO debería moverse mucho (ej: X)
-  float centroSecundario; // valor "normal" del eje secundario, se calibra
-  float toleranciaSecundario; // cuánto se le permite desviarse
+  uint8_t ejeSecundario;       // eje que NO debería moverse mucho (ej: X)
+  float centroSecundario;      // valor "normal" del eje secundario, se calibra
+  float toleranciaSecundario;  // cuánto se le permite desviarse
 };
 
-Ejercicio ejercicioActual = { "Curl de biceps", 1, 0, 0,  /*principal: Y*/
-                                                  0, 0, 0 /*secundario: se define abajo*/ };
+Ejercicio ejercicioActual = { "Curl de biceps", 1, 0, 0, /*principal: Y*/
+                              0, 0, 0 /*secundario: se define abajo*/ };
 // Ejercicio que está activo ahora mismo. Para agregar uno
 // nuevo, solo hace falta declarar otro Ejercicio con su
 // nombre y su eje (los ángulos se calibran solos):
@@ -132,9 +131,9 @@ void calibrarEjercicio(Ejercicio &ej, unsigned long duracionMs) {
   while (millis() - inicio < duracionMs) {
     leerInclinacion();
 
-    float v  = valorEje(ej.ejePrincipal);
-    float vs = valorEje(ej.ejeSecundario); // lectura del eje de control
-
+    float v = valorEje(ej.ejePrincipal);   //devuelve de la funcion valorEje
+    float vs = valorEje(ej.ejeSecundario);  // lectura del eje de control
+    
     if (v < minV) minV = v;
     if (v > maxV) maxV = v;
 
@@ -156,11 +155,16 @@ void calibrarEjercicio(Ejercicio &ej, unsigned long duracionMs) {
   // La tolerancia es cuánto se movió el eje secundario incluso
   // en una repetición correcta (le agregamos un colchón extra).
   float variacionVista = (maxSecundario - minSecundario) / 2.0;
-  ej.toleranciaSecundario = variacionVista + 5.0; // +5° de margen extra
+  ej.toleranciaSecundario = variacionVista + 5.0;  // +5° de margen extra
 
-  Serial.print("Rango principal: "); Serial.print(minV); Serial.print(" a "); Serial.println(maxV);
-  Serial.print("Centro secundario: "); Serial.println(ej.centroSecundario);
-  Serial.print("Tolerancia secundario: "); Serial.println(ej.toleranciaSecundario);
+  Serial.print("Rango principal: ");
+  Serial.print(minV);
+  Serial.print(" a ");
+  Serial.println(maxV);
+  Serial.print("Centro secundario: ");
+  Serial.println(ej.centroSecundario);
+  Serial.print("Tolerancia secundario: ");
+  Serial.println(ej.toleranciaSecundario);
 }
 
 // ============================================================
@@ -170,9 +174,11 @@ void calibrarEjercicio(Ejercicio &ej, unsigned long duracionMs) {
 //   REPOSO -> arranca cuando se acerca al mínimo del rango
 //   MEDIO  -> confirma que pasó por el centro (evita "trampas")
 //   FIN    -> confirma que llegó al máximo del rango
-enum Fase { REPOSO, MEDIO, FIN };
-Fase fase = REPOSO; 
-unsigned long tInicio = 0; // marca de tiempo de cuándo arrancó la repetición
+enum Fase { REPOSO,
+            MEDIO,
+            FIN };
+Fase fase = REPOSO;
+unsigned long tInicio = 0;  // marca de tiempo de cuándo arrancó la repetición
 
 // Tiempos válidos para que una repetición cuente como real
 // (evita que un golpe/vibración cuente como repetición, y
@@ -185,13 +191,13 @@ const unsigned long T_MAX = 5000;  // ms máximos antes de descartarla
 const float MARGEN = 0.15;
 
 void evaluarRepeticion(Ejercicio &ej) {
-  float v  = valorEje(ej.ejePrincipal);
+  float v = valorEje(ej.ejePrincipal);
   float vs = valorEje(ej.ejeSecundario);
 
   // ¿Se desvió demasiado del comportamiento normal del eje secundario?
   bool posturaOK = abs(vs - ej.centroSecundario) <= ej.toleranciaSecundario;
 
-  float rango  = ej.maxAngulo - ej.minAngulo;
+  float rango = ej.maxAngulo - ej.minAngulo;
   float inicio = ej.minAngulo + rango * MARGEN;
   float centro = ej.minAngulo + rango * 0.50;
   float final_ = ej.maxAngulo - rango * MARGEN;
@@ -221,25 +227,26 @@ void evaluarRepeticion(Ejercicio &ej) {
       }
       break;
 
-    case FIN: {
-      if (!posturaOK) {
-        Serial.println("Mal (postura, se desvio del eje secundario)");
-        fase = REPOSO;
-        delay(250);
+    case FIN:
+      {
+        if (!posturaOK) {
+          Serial.println("Mal (postura, se desvio del eje secundario)");
+          fase = REPOSO;
+          delay(250);
+          break;
+        }
+
+        unsigned long duracion = millis() - tInicio;
+        if (v >= final_) {
+          Serial.println(duracion >= T_MIN ? "Bien" : "Mal (muy rapido)");
+          fase = REPOSO;
+          delay(250);
+        } else if (duracion > T_MAX) {
+          Serial.println("Mal");
+          fase = REPOSO;
+        }
         break;
       }
-
-      unsigned long duracion = millis() - tInicio;
-      if (v >= final_) {
-        Serial.println(duracion >= T_MIN ? "Bien" : "Mal (muy rapido)");
-        fase = REPOSO;
-        delay(250);
-      } else if (duracion > T_MAX) {
-        Serial.println("Mal");
-        fase = REPOSO;
-      }
-      break;
-    }
   }
 }
 
@@ -254,10 +261,10 @@ void setup() {
   calibrarOffsetGlobal();
 
   // 2) Calibración del ejercicio actual: una repetición de muestra.
-  calibrarEjercicio(ejercicioActual, 4000); // 4 segundos para la rep de muestra
+  calibrarEjercicio(ejercicioActual, 4000);  // 4 segundos para la rep de muestra
 }
 
-void loop() { 
+void loop() {
   leerInclinacion();
   evaluarRepeticion(ejercicioActual);
   delay(100);
