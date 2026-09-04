@@ -1,7 +1,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
-const char* ssid = "ESP32_AP";
+const char* ssid = "ESP01_MPU6050"; 
 const char* password = "12345678";
 
 const char* serverName = "http://192.168.4.1/mensaje"; // IP del AP

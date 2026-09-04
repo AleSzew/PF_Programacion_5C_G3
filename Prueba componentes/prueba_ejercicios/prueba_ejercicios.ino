@@ -191,6 +191,7 @@ const unsigned long T_MAX = 5000;  // ms máximos antes de descartarla
 const float MARGEN = 0.15;
 
 void evaluarRepeticion(Ejercicio &ej) {
+  
   float v = valorEje(ej.ejePrincipal);
   float vs = valorEje(ej.ejeSecundario);
 

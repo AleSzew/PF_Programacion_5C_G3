@@ -2,7 +2,6 @@
 #include "Wire.h"
 #include "WiFi.h"
 #include <HTTPClient.h>
-#include <WebServer.h>
 #include <Ticker.h>
 #include <NimBLEDevice.h>
 
@@ -32,6 +31,13 @@ bool flagBoton = false;
 int16_t ax_local, ay_local, az_local;
 float ax_ms2_local, ay_ms2_local, az_ms2_local, inclX_local, inclY_local, inclZ_local;
 
+// Ángulos de los 2 sensores auxiliares, ya recibidos por WiFi.
+// El auxiliar manda sus 3 ejes YA con su propio offset aplicado.
+float inclX_aux1, inclY_aux1, inclZ_aux1;
+float inclX_aux2, inclY_aux2, inclZ_aux2;
+bool aux1_ok = false; // si el último request falló, no confiamos en el dato viejo
+bool aux2_ok = false;
+
 String resultadoValidacion = "";
 int segundosBoton = 0;
 
@@ -42,15 +48,19 @@ int segundosBoton = 0;
 
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3";
-int codigo; // llega por BLE, elige qué ejercicio calibrar/evaluar
+int codigo;
+
+// IPs fijas que le vamos a asignar a cada auxiliar (ver código auxiliar más adelante)
+const char* serverAux1 = "http://192.168.4.2/datos";
+const char* serverAux2 = "http://192.168.4.3/datos";
 
 // ============================================================
-// OFFSET GLOBAL DEL SENSOR (se calibra UNA sola vez en setup())
+// OFFSET GLOBAL DEL SENSOR LOCAL
 // ============================================================
 float offset_X, offset_Y, offset_Z;
 
 void calibrarOffsetGlobal() {
-  Serial.println("Calibrando sensor, no muevas el dispositivo...");
+  Serial.println("Calibrando sensor local, no muevas el dispositivo...");
   float sumaX = 0, sumaY = 0, sumaZ = 0;
   const int MUESTRAS = 100;
   for (int i = 0; i < MUESTRAS; i++) {
@@ -67,11 +77,10 @@ void calibrarOffsetGlobal() {
   offset_X = sumaX / MUESTRAS;
   offset_Y = sumaY / MUESTRAS;
   offset_Z = sumaZ / MUESTRAS;
-  Serial.println("Sensor calibrado.");
+  Serial.println("Sensor local calibrado.");
 }
 
-// Lee el sensor local y actualiza inclX_local/Y/Z ya con offset aplicado.
-// Reemplaza a la vieja mediciones(), que no restaba offset.
+// Lee el sensor local (con offset ya aplicado)
 void mediciones() {
   sensor.getAcceleration(&ax_local, &ay_local, &az_local);
   ax_ms2_local = (ax_local / 16384.0) * 9.81;
@@ -83,44 +92,92 @@ void mediciones() {
   inclZ_local = atan2(az_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + ay_ms2_local * ay_ms2_local)) * 180.0 / PI - offset_Z;
 }
 
-float valorEje(uint8_t eje) {
-  if (eje == 0) return inclX_local;
-  if (eje == 1) return inclY_local;
-  return inclZ_local;
+// ============================================================
+// COMUNICACIÓN CON LOS AUXILIARES
+// ============================================================
+// Pide "x,y,z" en UN solo request (evita 3 lecturas de instantes distintos).
+// Devuelve false si falló (auxiliar apagado, timeout, etc).
+bool pedirDatosAux(const char* url, float &x, float &y, float &z) {
+  if (WiFi.softAPgetStationNum() == 0) return false;
+
+  HTTPClient http;
+  http.setTimeout(300); // timeout corto: si no responde rápido, seguimos sin trabar todo
+  http.begin(url);
+  int codigoHttp = http.GET();
+
+  if (codigoHttp != 200) {
+    http.end();
+    return false;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  int c1 = payload.indexOf(',');
+  int c2 = payload.indexOf(',', c1 + 1);
+  if (c1 < 0 || c2 < 0) return false; // formato inesperado
+
+  x = payload.substring(0, c1).toFloat();
+  y = payload.substring(c1 + 1, c2).toFloat();
+  z = payload.substring(c2 + 1).toFloat();
+  return true;
+}
+
+void recibirValoresAux() {
+  aux1_ok = pedirDatosAux(serverAux1, inclX_aux1, inclY_aux1, inclZ_aux1);
+  aux2_ok = pedirDatosAux(serverAux2, inclX_aux2, inclY_aux2, inclZ_aux2);
+
+  if (!aux1_ok) Serial.println("Aviso: no se pudo leer auxiliar 1");
+  if (!aux2_ok) Serial.println("Aviso: no se pudo leer auxiliar 2");
+}
+
+// Devuelve el ángulo de cualquiera de los 3 sensores.
+// sensor: 0=local, 1=aux1, 2=aux2 | eje: 0=X, 1=Y, 2=Z
+float leerAngulo(uint8_t sensorId, uint8_t eje) {
+  float x, y, z;
+  if (sensorId == 0)      { x = inclX_local; y = inclY_local; z = inclZ_local; }
+  else if (sensorId == 1) { x = inclX_aux1;  y = inclY_aux1;  z = inclZ_aux1;  }
+  else                    { x = inclX_aux2;  y = inclY_aux2;  z = inclZ_aux2;  }
+
+  if (eje == 0) return x;
+  if (eje == 1) return y;
+  return z;
 }
 
 // ============================================================
-// DEFINICIÓN DE EJERCICIO
+// DEFINICIÓN DE EJERCICIO (ahora con sensores de postura)
 // ============================================================
+#define CANT_POSTURA 2
+
 struct Ejercicio {
   const char* nombre;
+
+  uint8_t sensorPrincipal;  // 0=local, 1=aux1, 2=aux2
   uint8_t ejePrincipal;
   float minAngulo;
   float maxAngulo;
-  uint8_t ejeSecundario;
-  float centroSecundario;
-  float toleranciaSecundario;
+
+  uint8_t sensorPostura[CANT_POSTURA];
+  uint8_t ejePostura[CANT_POSTURA];
+  float centroPostura[CANT_POSTURA];
+  float toleranciaPostura[CANT_POSTURA];
 };
 
-// Un ejercicio por cada "codigo" que puede llegar por BLE (1 a 5).
-// Los ejes de cada uno hay que definirlos probando con Serial
-// (igual que hicimos con el curl): cuál eje sube/baja con el
-// movimiento (principal) y cuál se mantiene estable si se hace
-// bien (secundario). minAngulo/maxAngulo/centroSecundario/tolerancia
-// NO se tocan a mano: los llena calibrarEjercicio().
+// PLACEHOLDER: hay que definir con pruebas reales qué sensor/eje
+// es el principal y cuáles son de postura para cada ejercicio.
 #define CANT_EJERCICIOS 5
 Ejercicio ejercicios[CANT_EJERCICIOS] = {
-  { "Curl de biceps",     1, 0, 0,  0, 0, 0 }, // codigo 1: principal Y, secundario X
-  { "Ejercicio 2",        0, 0, 0,  1, 0, 0 }, // codigo 2: PLACEHOLDER, ajustar ejes
-  { "Ejercicio 3",        0, 0, 0,  1, 0, 0 }, // codigo 3: PLACEHOLDER
-  { "Ejercicio 4",        0, 0, 0,  1, 0, 0 }, // codigo 4: PLACEHOLDER
-  { "Ejercicio 5",        0, 0, 0,  1, 0, 0 }  // codigo 5: PLACEHOLDER
+  { "Curl de biceps", 0, 1, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} }, // principal: local eje Y | postura: aux1 y aux2 eje Y
+  { "Ejercicio 2",    0, 0, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} },
+  { "Ejercicio 3",    0, 0, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} },
+  { "Ejercicio 4",    0, 0, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} },
+  { "Ejercicio 5",    0, 0, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} }
 };
 
-Ejercicio* ejercicioActual = &ejercicios[0]; // por defecto, curl de biceps
+Ejercicio* ejercicioActual = &ejercicios[0];
 
 // ============================================================
-// CALIBRACIÓN POR EJERCICIO (repetición de muestra, bloqueante)
+// CALIBRACIÓN POR EJERCICIO
 // ============================================================
 void calibrarEjercicio(Ejercicio &ej, unsigned long duracionMs) {
   Serial.print("Calibrando: ");
@@ -128,39 +185,47 @@ void calibrarEjercicio(Ejercicio &ej, unsigned long duracionMs) {
   Serial.println("Hace UNA repeticion completa, lenta y CORRECTA ahora.");
 
   float minV = 999, maxV = -999;
-  float sumaSecundario = 0;
+
+  float sumaPostura[CANT_POSTURA] = {0, 0};
+  float minPostura[CANT_POSTURA] = {999, 999};
+  float maxPostura[CANT_POSTURA] = {-999, -999};
   int cantidadLecturas = 0;
-  float minSecundario = 999, maxSecundario = -999;
 
   unsigned long inicio = millis();
   while (millis() - inicio < duracionMs) {
     mediciones();
-    float v = valorEje(ej.ejePrincipal);
-    float vs = valorEje(ej.ejeSecundario);
+    recibirValoresAux();
 
+    float v = leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
     if (v < minV) minV = v;
     if (v > maxV) maxV = v;
 
-    sumaSecundario += vs;
-    cantidadLecturas++;
-    if (vs < minSecundario) minSecundario = vs;
-    if (vs > maxSecundario) maxSecundario = vs;
+    for (int i = 0; i < CANT_POSTURA; i++) {
+      float vp = leerAngulo(ej.sensorPostura[i], ej.ejePostura[i]);
+      sumaPostura[i] += vp;
+      if (vp < minPostura[i]) minPostura[i] = vp;
+      if (vp > maxPostura[i]) maxPostura[i] = vp;
+    }
 
+    cantidadLecturas++;
     delay(50);
   }
 
   ej.minAngulo = minV;
   ej.maxAngulo = maxV;
-  ej.centroSecundario = sumaSecundario / cantidadLecturas;
-  float variacionVista = (maxSecundario - minSecundario) / 2.0;
-  ej.toleranciaSecundario = variacionVista + 5.0;
+
+  for (int i = 0; i < CANT_POSTURA; i++) {
+    ej.centroPostura[i] = sumaPostura[i] / cantidadLecturas;
+    float variacion = (maxPostura[i] - minPostura[i]) / 2.0;
+    ej.toleranciaPostura[i] = variacion + 5.0;
+  }
 
   Serial.print("Rango principal: "); Serial.print(minV); Serial.print(" a "); Serial.println(maxV);
-  Serial.print("Centro secundario: "); Serial.println(ej.centroSecundario);
-  Serial.print("Tolerancia secundario: "); Serial.println(ej.toleranciaSecundario);
+  for (int i = 0; i < CANT_POSTURA; i++) {
+    Serial.print("Postura "); Serial.print(i); Serial.print(" centro: "); Serial.println(ej.centroPostura[i]);
+  }
 }
 
-// Elige el ejercicio según el "codigo" recibido por BLE y lo calibra.
 void calibrarEstandar() {
   if (codigo < 1 || codigo > CANT_EJERCICIOS) {
     Serial.println("Codigo de ejercicio invalido, uso el default.");
@@ -182,11 +247,17 @@ const unsigned long T_MIN = 200;
 const unsigned long T_MAX = 5000;
 const float MARGEN = 0.15;
 
-// Evalúa la repetición en curso. Reemplaza a compararConEstandar().
+bool posturaOK(Ejercicio &ej) {
+  for (int i = 0; i < CANT_POSTURA; i++) {
+    float vp = leerAngulo(ej.sensorPostura[i], ej.ejePostura[i]);
+    if (abs(vp - ej.centroPostura[i]) > ej.toleranciaPostura[i]) return false;
+  }
+  return true;
+}
+
 void evaluarRepeticion(Ejercicio &ej) {
-  float v  = valorEje(ej.ejePrincipal);
-  float vs = valorEje(ej.ejeSecundario);
-  bool posturaOK = abs(vs - ej.centroSecundario) <= ej.toleranciaSecundario;
+  float v = leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
+  bool okPostura = posturaOK(ej);
 
   float rango  = ej.maxAngulo - ej.minAngulo;
   float inicio = ej.minAngulo + rango * MARGEN;
@@ -202,7 +273,7 @@ void evaluarRepeticion(Ejercicio &ej) {
       break;
 
     case MEDIO:
-      if (!posturaOK) {
+      if (!okPostura) {
         resultadoValidacion = "MAL (postura)";
         contadorErrores++;
         faseRep = REPOSO;
@@ -218,7 +289,7 @@ void evaluarRepeticion(Ejercicio &ej) {
       break;
 
     case FIN: {
-      if (!posturaOK) {
+      if (!okPostura) {
         resultadoValidacion = "MAL (postura)";
         contadorErrores++;
         faseRep = REPOSO;
@@ -241,11 +312,11 @@ void evaluarRepeticion(Ejercicio &ej) {
       break;
     }
   }
-  Serial.println(resultadoValidacion); // debug, después se manda por BLE
+  Serial.println(resultadoValidacion);
 }
 
 // ============================================================
-// BLE (igual que antes)
+// BLE
 // ============================================================
 class MiServerCallbacks: public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
@@ -296,7 +367,7 @@ void enviarFeedbackBLE(const String& mensaje) {
 }
 
 // ============================================================
-// BOTÓN (antirrebote, igual que antes)
+// BOTÓN
 // ============================================================
 void maquinaAntirrebote() {
   bool lecturaBoton = digitalRead(PIN_BOTON);
@@ -332,8 +403,8 @@ void Maq_General() {
       digitalWrite(PIN_LED_G, HIGH);
       if (flagBoton) {
         flagBoton = false;
-        calibrarEstandar();       // calibra el ejercicio elegido por BLE
-        faseRep = REPOSO;         // arranca la máquina de repeticiones limpia
+        calibrarEstandar();
+        faseRep = REPOSO;
         contadorErrores = 0;
         estadoMaq_General = MEDICIONES;
       }
@@ -347,6 +418,7 @@ void Maq_General() {
       if (flagMedicion) {
         flagMedicion = false;
         mediciones();
+        recibirValoresAux();
         evaluarRepeticion(*ejercicioActual);
       }
       if (flagBoton) {
@@ -395,8 +467,7 @@ void setup() {
   delay(500);
 
   inicializarBLE();
-
-  calibrarOffsetGlobal(); // una sola vez, con el sensor quieto al arrancar
+  calibrarOffsetGlobal();
 
   timerBoton.attach(1, funcionTimerBoton);
   timerAntirrebote.attach_ms(1, funcionTimerAntirrebote);
