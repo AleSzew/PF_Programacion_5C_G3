@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <Ticker.h>
 #include <NimBLEDevice.h>
+#include "I2Cdev.h"
 
 struct Ejercicio;
 
@@ -19,10 +20,15 @@ int contadorErrores = 0;
 bool flagMedicion = false;
 int INTERVALO_MEDICION = 100;
 
-typedef enum { INICIALIZACION, MEDICIONES, ANALISIS_SERIE, C_APLICACION } estadoMaq_General_t;
+typedef enum { INICIALIZACION,
+               MEDICIONES,
+               ANALISIS_SERIE,
+               C_APLICACION } estadoMaq_General_t;
 estadoMaq_General_t estadoMaq_General = INICIALIZACION;
 
-typedef enum { ESPERA, CONFIRMACION, LIBERACION } estadoAntirrebote_t;
+typedef enum { ESPERA,
+               CONFIRMACION,
+               LIBERACION } estadoAntirrebote_t;
 estadoAntirrebote_t estadoBoton = ESPERA;
 int msBoton = 0;
 bool flagBoton = false;
@@ -35,7 +41,7 @@ float ax_ms2_local, ay_ms2_local, az_ms2_local, inclX_local, inclY_local, inclZ_
 // El auxiliar manda sus 3 ejes YA con su propio offset aplicado.
 float inclX_aux1, inclY_aux1, inclZ_aux1;
 float inclX_aux2, inclY_aux2, inclZ_aux2;
-bool aux1_ok = false; // si el último request falló, no confiamos en el dato viejo
+bool aux1_ok = false;  // si el último request falló, no confiamos en el dato viejo
 bool aux2_ok = false;
 
 String resultadoValidacion = "";
@@ -97,11 +103,11 @@ void mediciones() {
 // ============================================================
 // Pide "x,y,z" en UN solo request (evita 3 lecturas de instantes distintos).
 // Devuelve false si falló (auxiliar apagado, timeout, etc).
-bool pedirDatosAux(const char* url, float &x, float &y, float &z) {
+bool pedirDatosAux(const char* url, float& x, float& y, float& z) {
   if (WiFi.softAPgetStationNum() == 0) return false;
 
   HTTPClient http;
-  http.setTimeout(300); // timeout corto: si no responde rápido, seguimos sin trabar todo
+  http.setTimeout(300);
   http.begin(url);
   int codigoHttp = http.GET();
 
@@ -113,9 +119,11 @@ bool pedirDatosAux(const char* url, float &x, float &y, float &z) {
   String payload = http.getString();
   http.end();
 
+  if (payload == "NOMIDIENDO") return false;  // no está midiendo, no es un dato válido
+
   int c1 = payload.indexOf(',');
   int c2 = payload.indexOf(',', c1 + 1);
-  if (c1 < 0 || c2 < 0) return false; // formato inesperado
+  if (c1 < 0 || c2 < 0) return false;
 
   x = payload.substring(0, c1).toFloat();
   y = payload.substring(c1 + 1, c2).toFloat();
@@ -135,9 +143,19 @@ void recibirValoresAux() {
 // sensor: 0=local, 1=aux1, 2=aux2 | eje: 0=X, 1=Y, 2=Z
 float leerAngulo(uint8_t sensorId, uint8_t eje) {
   float x, y, z;
-  if (sensorId == 0)      { x = inclX_local; y = inclY_local; z = inclZ_local; }
-  else if (sensorId == 1) { x = inclX_aux1;  y = inclY_aux1;  z = inclZ_aux1;  }
-  else                    { x = inclX_aux2;  y = inclY_aux2;  z = inclZ_aux2;  }
+  if (sensorId == 0) {
+    x = inclX_local;
+    y = inclY_local;
+    z = inclZ_local;
+  } else if (sensorId == 1) {
+    x = inclX_aux1;
+    y = inclY_aux1;
+    z = inclZ_aux1;
+  } else {
+    x = inclX_aux2;
+    y = inclY_aux2;
+    z = inclZ_aux2;
+  }
 
   if (eje == 0) return x;
   if (eje == 1) return y;
@@ -167,11 +185,11 @@ struct Ejercicio {
 // es el principal y cuáles son de postura para cada ejercicio.
 #define CANT_EJERCICIOS 5
 Ejercicio ejercicios[CANT_EJERCICIOS] = {
-  { "Curl de biceps", 0, 1, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} }, // principal: local eje Y | postura: aux1 y aux2 eje Y
-  { "Ejercicio 2",    0, 0, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} },
-  { "Ejercicio 3",    0, 0, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} },
-  { "Ejercicio 4",    0, 0, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} },
-  { "Ejercicio 5",    0, 0, 0, 0,  {1, 2}, {1, 1}, {0, 0}, {0, 0} }
+  { "Curl de biceps", 0, 1, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } },  // principal: local eje Y | postura: aux1 y aux2 eje Y
+  { "Ejercicio 2", 0, 0, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } },
+  { "Ejercicio 3", 0, 0, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } },
+  { "Ejercicio 4", 0, 0, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } },
+  { "Ejercicio 5", 0, 0, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } }
 };
 
 Ejercicio* ejercicioActual = &ejercicios[0];
@@ -179,16 +197,16 @@ Ejercicio* ejercicioActual = &ejercicios[0];
 // ============================================================
 // CALIBRACIÓN POR EJERCICIO
 // ============================================================
-void calibrarEjercicio(Ejercicio &ej, unsigned long duracionMs) {
+void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMs) {
   Serial.print("Calibrando: ");
   Serial.println(ej.nombre);
   Serial.println("Hace UNA repeticion completa, lenta y CORRECTA ahora.");
 
   float minV = 999, maxV = -999;
 
-  float sumaPostura[CANT_POSTURA] = {0, 0};
-  float minPostura[CANT_POSTURA] = {999, 999};
-  float maxPostura[CANT_POSTURA] = {-999, -999};
+  float sumaPostura[CANT_POSTURA] = { 0, 0 };
+  float minPostura[CANT_POSTURA] = { 999, 999 };
+  float maxPostura[CANT_POSTURA] = { -999, -999 };
   int cantidadLecturas = 0;
 
   unsigned long inicio = millis();
@@ -220,9 +238,15 @@ void calibrarEjercicio(Ejercicio &ej, unsigned long duracionMs) {
     ej.toleranciaPostura[i] = variacion + 5.0;
   }
 
-  Serial.print("Rango principal: "); Serial.print(minV); Serial.print(" a "); Serial.println(maxV);
+  Serial.print("Rango principal: ");
+  Serial.print(minV);
+  Serial.print(" a ");
+  Serial.println(maxV);
   for (int i = 0; i < CANT_POSTURA; i++) {
-    Serial.print("Postura "); Serial.print(i); Serial.print(" centro: "); Serial.println(ej.centroPostura[i]);
+    Serial.print("Postura ");
+    Serial.print(i);
+    Serial.print(" centro: ");
+    Serial.println(ej.centroPostura[i]);
   }
 }
 
@@ -239,7 +263,9 @@ void calibrarEstandar() {
 // ============================================================
 // MÁQUINA DE ESTADOS DE LA REPETICIÓN
 // ============================================================
-enum FaseRep { REPOSO, MEDIO, FIN };
+enum FaseRep { REPOSO,
+               MEDIO,
+               FIN };
 FaseRep faseRep = REPOSO;
 unsigned long tInicioRep = 0;
 
@@ -247,19 +273,24 @@ const unsigned long T_MIN = 200;
 const unsigned long T_MAX = 5000;
 const float MARGEN = 0.15;
 
-bool posturaOK(Ejercicio &ej) {
+bool posturaOK(Ejercicio& ej) {
   for (int i = 0; i < CANT_POSTURA; i++) {
-    float vp = leerAngulo(ej.sensorPostura[i], ej.ejePostura[i]);
+    uint8_t s = ej.sensorPostura[i];
+    // Si el sensor de postura es un auxiliar y no respondió, no podemos confiar en el dato
+    if (s == 1 && !aux1_ok) return false;
+    if (s == 2 && !aux2_ok) return false;
+
+    float vp = leerAngulo(s, ej.ejePostura[i]);
     if (abs(vp - ej.centroPostura[i]) > ej.toleranciaPostura[i]) return false;
   }
   return true;
 }
 
-void evaluarRepeticion(Ejercicio &ej) {
+void evaluarRepeticion(Ejercicio& ej) {
   float v = leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
   bool okPostura = posturaOK(ej);
 
-  float rango  = ej.maxAngulo - ej.minAngulo;
+  float rango = ej.maxAngulo - ej.minAngulo;
   float inicio = ej.minAngulo + rango * MARGEN;
   float centro = ej.minAngulo + rango * 0.50;
   float final_ = ej.maxAngulo - rango * MARGEN;
@@ -278,6 +309,12 @@ void evaluarRepeticion(Ejercicio &ej) {
         contadorErrores++;
         faseRep = REPOSO;
         break;
+        if (!okPostura) {
+          resultadoValidacion = (!aux1_ok || !aux2_ok) ? "MAL (sensor desconectado)" : "MAL (postura)";
+          contadorErrores++;
+          faseRep = REPOSO;
+          break;
+        }
       }
       if (abs(v - centro) <= rango * MARGEN) {
         faseRep = FIN;
@@ -288,29 +325,30 @@ void evaluarRepeticion(Ejercicio &ej) {
       }
       break;
 
-    case FIN: {
-      if (!okPostura) {
-        resultadoValidacion = "MAL (postura)";
-        contadorErrores++;
-        faseRep = REPOSO;
+    case FIN:
+      {
+        if (!okPostura) {
+          resultadoValidacion = "MAL (postura)";
+          contadorErrores++;
+          faseRep = REPOSO;
+          break;
+        }
+        unsigned long duracion = millis() - tInicioRep;
+        if (v >= final_) {
+          if (duracion >= T_MIN) {
+            resultadoValidacion = "BIEN";
+          } else {
+            resultadoValidacion = "MAL (muy rapido)";
+            contadorErrores++;
+          }
+          faseRep = REPOSO;
+        } else if (duracion > T_MAX) {
+          resultadoValidacion = "MAL (tiempo)";
+          contadorErrores++;
+          faseRep = REPOSO;
+        }
         break;
       }
-      unsigned long duracion = millis() - tInicioRep;
-      if (v >= final_) {
-        if (duracion >= T_MIN) {
-          resultadoValidacion = "BIEN";
-        } else {
-          resultadoValidacion = "MAL (muy rapido)";
-          contadorErrores++;
-        }
-        faseRep = REPOSO;
-      } else if (duracion > T_MAX) {
-        resultadoValidacion = "MAL (tiempo)";
-        contadorErrores++;
-        faseRep = REPOSO;
-      }
-      break;
-    }
   }
   Serial.println(resultadoValidacion);
 }
@@ -318,7 +356,7 @@ void evaluarRepeticion(Ejercicio &ej) {
 // ============================================================
 // BLE
 // ============================================================
-class MiServerCallbacks: public NimBLEServerCallbacks {
+class MiServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
     Serial.println("BLE Conectado");
   };
@@ -373,7 +411,10 @@ void maquinaAntirrebote() {
   bool lecturaBoton = digitalRead(PIN_BOTON);
   switch (estadoBoton) {
     case ESPERA:
-      if (lecturaBoton == LOW) { msBoton = 0; estadoBoton = CONFIRMACION; }
+      if (lecturaBoton == LOW) {
+        msBoton = 0;
+        estadoBoton = CONFIRMACION;
+      }
       break;
     case CONFIRMACION:
       if (msBoton >= T_REBOTE) {
@@ -382,7 +423,10 @@ void maquinaAntirrebote() {
       }
       break;
     case LIBERACION:
-      if (lecturaBoton == HIGH) { flagBoton = true; estadoBoton = ESPERA; }
+      if (lecturaBoton == HIGH) {
+        flagBoton = true;
+        estadoBoton = ESPERA;
+      }
       break;
   }
 }
@@ -391,9 +435,65 @@ void funcionTimerBoton() {
   if (digitalRead(PIN_BOTON) == LOW) segundosBoton++;
   else segundosBoton = 0;
 }
-void funcionTimerAntirrebote() { msBoton++; }
-void funcionTimerMedicion() { flagMedicion = true; }
+void funcionTimerAntirrebote() {
+  msBoton++;
+}
+void funcionTimerMedicion() {
+  flagMedicion = true;
+}
+// Manda un comando simple (sin parámetros) a un auxiliar.
+// No importa mucho si falla -- por eso timeout corto y no se
+// reintenta, para no bloquear el resto del sistema.
+// Intenta enviar un comando hasta "intentos" veces, con una
+// pequeña espera entre reintentos. Devuelve true si en algún
+// intento respondió 200 OK.
+bool enviarComandoAux(const char* urlBase, const char* comando, int intentos = 3) {
+  String url = String(urlBase) + comando;
 
+  for (int i = 0; i < intentos; i++) {
+    if (WiFi.softAPgetStationNum() == 0) return false;
+
+    HTTPClient http;
+    http.setTimeout(300);
+    http.begin(url);
+    int codigoHttp = http.GET();
+    http.end();
+
+    if (codigoHttp == 200) return true;  // éxito, no hace falta reintentar
+
+    Serial.print("Intento ");
+    Serial.print(i + 1);
+    Serial.print(" fallido para ");
+    Serial.println(url);
+    delay(150);  // pequeña pausa antes de reintentar
+  }
+
+  return false;  // se agotaron los intentos sin respuesta
+}
+
+// Devuelve true solo si ambos auxiliares confirmaron el inicio.
+// Si alguno falla, avisa por BLE indicando cuál.
+bool iniciarMedicionEnAuxiliares() {
+  bool ok1 = enviarComandoAux("http://192.168.4.2/", "iniciar");
+  bool ok2 = enviarComandoAux("http://192.168.4.3/", "iniciar");
+
+  if (!ok1 && !ok2) {
+    enviarFeedbackBLE("ERROR:no responden los 2 sensores auxiliares");
+  } else if (!ok1) {
+    enviarFeedbackBLE("ERROR:sensor auxiliar 1 no responde");
+  } else if (!ok2) {
+    enviarFeedbackBLE("ERROR:sensor auxiliar 2 no responde");
+  }
+
+  return ok1 && ok2;
+}
+
+void detenerMedicionEnAuxiliares() {
+  // Acá no hace falta bloquear el flujo si falla: ya se está
+  // terminando la serie de todos modos.
+  enviarComandoAux("http://192.168.4.2/", "detener", 1);
+  enviarComandoAux("http://192.168.4.3/", "detener", 1);
+}
 // ============================================================
 // MÁQUINA GENERAL
 // ============================================================
@@ -403,10 +503,18 @@ void Maq_General() {
       digitalWrite(PIN_LED_G, HIGH);
       if (flagBoton) {
         flagBoton = false;
-        calibrarEstandar();
-        faseRep = REPOSO;
-        contadorErrores = 0;
-        estadoMaq_General = MEDICIONES;
+
+        if (iniciarMedicionEnAuxiliares()) {
+          // Todo respondió bien: recién ahora calibra y arranca
+          calibrarEstandar();
+          faseRep = REPOSO;
+          contadorErrores = 0;
+          estadoMaq_General = MEDICIONES;
+        } else {
+          // Algún auxiliar no respondió: se queda en INICIALIZACION,
+          // ya se avisó el motivo por BLE dentro de iniciarMedicionEnAuxiliares()
+          Serial.println("No se pudo iniciar: revisar sensores auxiliares");
+        }
       }
       if (Serial.available() > 0) {
         if (Serial.readStringUntil('\n') == "pasar estado") estadoMaq_General = MEDICIONES;
@@ -430,20 +538,24 @@ void Maq_General() {
       }
       break;
 
+      bool feedbackEnviado = false;  // global
+
     case ANALISIS_SERIE:
       if (segundosBoton >= 5) {
         resultadoValidacion = "SERIE TERMINADA: " + String(contadorErrores) + " errores";
         segundosBoton = 0;
         flagBoton = false;
+        detenerMedicionEnAuxiliares();
+        feedbackEnviado = false;  // <- resetea antes de entrar a C_APLICACION
         estadoMaq_General = C_APLICACION;
-      }
-      if (Serial.available() > 0) {
-        if (Serial.readStringUntil('\n') == "pasar estado") estadoMaq_General = C_APLICACION;
       }
       break;
 
     case C_APLICACION:
-      enviarFeedbackBLE(resultadoValidacion);
+      if (!feedbackEnviado) {
+        enviarFeedbackBLE(resultadoValidacion);
+        feedbackEnviado = true;
+      }
       if (flagBoton) {
         flagBoton = false;
         estadoMaq_General = INICIALIZACION;
