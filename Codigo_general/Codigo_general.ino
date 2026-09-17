@@ -46,6 +46,7 @@ bool aux2_ok = false;
 
 String resultadoValidacion = "";
 int segundosBoton = 0;
+bool feedbackEnviado = false;
 
 #define PIN_BOTON 1
 #define PIN_LED_R 9
@@ -305,16 +306,10 @@ void evaluarRepeticion(Ejercicio& ej) {
 
     case MEDIO:
       if (!okPostura) {
-        resultadoValidacion = "MAL (postura)";
+        resultadoValidacion = (!aux1_ok || !aux2_ok) ? "MAL (sensor desconectado)" : "MAL (postura)";
         contadorErrores++;
         faseRep = REPOSO;
         break;
-        if (!okPostura) {
-          resultadoValidacion = (!aux1_ok || !aux2_ok) ? "MAL (sensor desconectado)" : "MAL (postura)";
-          contadorErrores++;
-          faseRep = REPOSO;
-          break;
-        }
       }
       if (abs(v - centro) <= rango * MARGEN) {
         faseRep = FIN;
@@ -325,33 +320,43 @@ void evaluarRepeticion(Ejercicio& ej) {
       }
       break;
 
+      if (abs(v - centro) <= rango * MARGEN) {
+        faseRep = FIN;
+      } else if (millis() - tInicioRep > T_MAX) {
+        resultadoValidacion = "MAL (tiempo)";
+        contadorErrores++;
+        faseRep = REPOSO;
+      }
+      break;
+
     case FIN:
-      {
-        if (!okPostura) {
-          resultadoValidacion = "MAL (postura)";
-          contadorErrores++;
-          faseRep = REPOSO;
-          break;
-        }
-        unsigned long duracion = millis() - tInicioRep;
-        if (v >= final_) {
-          if (duracion >= T_MIN) {
-            resultadoValidacion = "BIEN";
-          } else {
-            resultadoValidacion = "MAL (muy rapido)";
-            contadorErrores++;
-          }
-          faseRep = REPOSO;
-        } else if (duracion > T_MAX) {
-          resultadoValidacion = "MAL (tiempo)";
-          contadorErrores++;
-          faseRep = REPOSO;
-        }
+
+      if (!okPostura) {
+        resultadoValidacion = "MAL (postura)";
+        contadorErrores++;
+        faseRep = REPOSO;
         break;
       }
+      unsigned long duracion = millis() - tInicioRep;
+      if (v >= final_) {
+        if (duracion >= T_MIN) {
+          resultadoValidacion = "BIEN";
+        } else {
+          resultadoValidacion = "MAL (muy rapido)";
+          contadorErrores++;
+        }
+        faseRep = REPOSO;
+      } else if (duracion > T_MAX) {
+        resultadoValidacion = "MAL (tiempo)";
+        contadorErrores++;
+        faseRep = REPOSO;
+      }
+      break;
   }
   Serial.println(resultadoValidacion);
 }
+
+
 
 // ============================================================
 // BLE
@@ -538,7 +543,6 @@ void Maq_General() {
       }
       break;
 
-      bool feedbackEnviado = false;  // global
 
     case ANALISIS_SERIE:
       if (segundosBoton >= 5) {
