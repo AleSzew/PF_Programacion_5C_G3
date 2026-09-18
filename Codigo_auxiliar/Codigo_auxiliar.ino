@@ -13,7 +13,7 @@ ESP8266WebServer server(80);
 // que actúa de Access Point ("ESP32_C3_Server").
 // ============================================================
 const char* ssid_principal = "ESP32_C3_Server";
-const char* password_principal = "GRUPO3";
+const char* password_principal = "GRUPO3XX";
 
 // IP FIJA de esta placa. Esto es lo único que cambia entre
 // el auxiliar 1 y el auxiliar 2: acá pongo .2 para el auxiliar 1.
@@ -100,7 +100,16 @@ void setup() {
   if (!sensor.testConnection()) {
     Serial.println("Error: MPU6050 no responde. Revisar cableado I2C.");
   }
-
+  Serial.println("Escaneando redes cercanas...");
+  int redesEncontradas = WiFi.scanNetworks();
+  for (int i = 0; i < redesEncontradas; i++) {
+    Serial.print(WiFi.SSID(i));
+    Serial.print(" (canal ");
+    Serial.print(WiFi.channel(i));
+    Serial.print(", RSSI ");
+    Serial.print(WiFi.RSSI(i));
+    Serial.println(")");
+  }
   // Conexión WiFi con IP fija (evita el problema de DHCP que
   // vimos: acá SIEMPRE va a ser 192.168.4.2, sin importar el
   // orden en que se prendan las placas)

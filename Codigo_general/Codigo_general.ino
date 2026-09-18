@@ -1,3 +1,4 @@
+//no borrar comenatrios
 #include <MPU6050.h>
 #include "Wire.h"
 #include "WiFi.h"
@@ -54,7 +55,7 @@ bool feedbackEnviado = false;
 #define PIN_LED_B 10
 
 const char* ssid = "ESP32_C3_Server";
-const char* password = "GRUPO3";
+const char* password = "GRUPO3XX";
 int codigo;
 
 // IPs fijas que le vamos a asignar a cada auxiliar (ver código auxiliar más adelante)
@@ -71,7 +72,8 @@ void calibrarOffsetGlobal() {
   float sumaX = 0, sumaY = 0, sumaZ = 0;
   const int MUESTRAS = 100;
   for (int i = 0; i < MUESTRAS; i++) {
-    int16_t ax, ay, az;
+
+    int16_t ax = 0, ay = 0, az = 0;  
     sensor.getAcceleration(&ax, &ay, &az);
     float x = (ax / 16384.0) * 9.81;
     float y = (ay / 16384.0) * 9.81;
@@ -105,14 +107,19 @@ void mediciones() {
 // Pide "x,y,z" en UN solo request (evita 3 lecturas de instantes distintos).
 // Devuelve false si falló (auxiliar apagado, timeout, etc).
 bool pedirDatosAux(const char* url, float& x, float& y, float& z) {
-  if (WiFi.softAPgetStationNum() == 0) return false;
+  if (WiFi.softAPgetStationNum() == 0) {
+    Serial.println("DEBUG: 0 estaciones conectadas al AP");
+    return false;
+  }
 
   HTTPClient http;
-  http.setTimeout(300);
+  http.setTimeout(1000);
   http.begin(url);
   int codigoHttp = http.GET();
 
   if (codigoHttp != 200) {
+    Serial.print("DEBUG: HTTP fallo, codigo: ");
+    Serial.println(codigoHttp);  // valores negativos = timeout/error de conexión
     http.end();
     return false;
   }
@@ -120,7 +127,14 @@ bool pedirDatosAux(const char* url, float& x, float& y, float& z) {
   String payload = http.getString();
   http.end();
 
-  if (payload == "NOMIDIENDO") return false;  // no está midiendo, no es un dato válido
+  Serial.print("DEBUG: payload recibido: ");
+  Serial.println(payload);  // acá vas a ver "x,y,z" real, o "NOMIDIENDO", o basura
+
+  if (payload == "NOMIDIENDO") return false;  
+  if (payload == "ERROR_I2C") {
+    Serial.println("¡ERROR: MPU6050 del auxiliar desconectado o fallando (I2C)!");
+    return false;
+  }
 
   int c1 = payload.indexOf(',');
   int c2 = payload.indexOf(',', c1 + 1);
@@ -132,13 +146,6 @@ bool pedirDatosAux(const char* url, float& x, float& y, float& z) {
   return true;
 }
 
-void recibirValoresAux() {
-  aux1_ok = pedirDatosAux(serverAux1, inclX_aux1, inclY_aux1, inclZ_aux1);
-  aux2_ok = pedirDatosAux(serverAux2, inclX_aux2, inclY_aux2, inclZ_aux2);
-
-  if (!aux1_ok) Serial.println("Aviso: no se pudo leer auxiliar 1");
-  if (!aux2_ok) Serial.println("Aviso: no se pudo leer auxiliar 2");
-}
 
 // Devuelve el ángulo de cualquiera de los 3 sensores.
 // sensor: 0=local, 1=aux1, 2=aux2 | eje: 0=X, 1=Y, 2=Z
@@ -169,24 +176,22 @@ float leerAngulo(uint8_t sensorId, uint8_t eje) {
 #define CANT_POSTURA 2
 
 struct Ejercicio {
-  const char* nombre;
-
-  uint8_t sensorPrincipal;  // 0=local, 1=aux1, 2=aux2
-  uint8_t ejePrincipal;
+  const char* nombre;  // 1. nombre del ejercicio (para mensajes)
+  //0 = sensor local (el que está en el ESP32 principal), 1 = auxiliar 1, 2 = auxiliar 2
+  uint8_t sensorPrincipal;  // 2. QUÉ SENSOR mide el movimiento principal
+  uint8_t ejePrincipal;     // 3. QUÉ EJE de ese sensor mide el movimiento
   float minAngulo;
   float maxAngulo;
-
-  uint8_t sensorPostura[CANT_POSTURA];
-  uint8_t ejePostura[CANT_POSTURA];
+  //0 = eje X, 1 = eje Y, 2 = eje Z
+  uint8_t sensorPostura[CANT_POSTURA];  // 6. QUÉ SENSORES vigilan  la postura
+  uint8_t ejePostura[CANT_POSTURA];     // 7. QUÉ EJE de cada sensor de postura
   float centroPostura[CANT_POSTURA];
   float toleranciaPostura[CANT_POSTURA];
 };
 
-// PLACEHOLDER: hay que definir con pruebas reales qué sensor/eje
-// es el principal y cuáles son de postura para cada ejercicio.
 #define CANT_EJERCICIOS 5
 Ejercicio ejercicios[CANT_EJERCICIOS] = {
-  { "Curl de biceps", 0, 1, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } },  // principal: local eje Y | postura: aux1 y aux2 eje Y
+  { "Curl de biceps", 0, 1, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },  //los parentesis para abajo son auxiliares 2 valores por 2 sensores 99= no se usa
   { "Ejercicio 2", 0, 0, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } },
   { "Ejercicio 3", 0, 0, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } },
   { "Ejercicio 4", 0, 0, 0, 0, { 1, 2 }, { 1, 1 }, { 0, 0 }, { 0, 0 } },
@@ -195,6 +200,35 @@ Ejercicio ejercicios[CANT_EJERCICIOS] = {
 
 Ejercicio* ejercicioActual = &ejercicios[0];
 
+// Devuelve true si el ejercicio "ej" usa el sensor "sensorId" (0=local, 1=aux1, 2=aux2),
+// ya sea como principal o como sensor de postura.
+bool sensorUsado(Ejercicio& ej, uint8_t sensorId) {
+  if (ej.sensorPrincipal == sensorId) return true;
+  for (int i = 0; i < CANT_POSTURA; i++) {
+    if (ej.sensorPostura[i] == sensorId) return true;
+  }
+  return false;
+}
+// Solo elige el ejercicio según el código BLE, sin calibrar todavía.
+void seleccionarEjercicio() {
+  if (codigo < 1 || codigo > CANT_EJERCICIOS) {
+    Serial.println("Codigo de ejercicio invalido, uso el default.");
+    ejercicioActual = &ejercicios[0];
+  } else {
+    ejercicioActual = &ejercicios[codigo - 1];
+  }
+}
+
+void recibirValoresAux(Ejercicio& ej) {
+  bool necesitaAux1 = sensorUsado(ej, 1);
+  bool necesitaAux2 = sensorUsado(ej, 2);
+
+  aux1_ok = necesitaAux1 ? pedirDatosAux(serverAux1, inclX_aux1, inclY_aux1, inclZ_aux1) : true;
+  aux2_ok = necesitaAux2 ? pedirDatosAux(serverAux2, inclX_aux2, inclY_aux2, inclZ_aux2) : true;
+
+  if (necesitaAux1 && !aux1_ok) Serial.println("Aviso: no se pudo leer auxiliar 1");
+  if (necesitaAux2 && !aux2_ok) Serial.println("Aviso: no se pudo leer auxiliar 2");
+}
 // ============================================================
 // CALIBRACIÓN POR EJERCICIO
 // ============================================================
@@ -213,7 +247,7 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMs) {
   unsigned long inicio = millis();
   while (millis() - inicio < duracionMs) {
     mediciones();
-    recibirValoresAux();
+    recibirValoresAux(ej);
 
     float v = leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
     if (v < minV) minV = v;
@@ -251,15 +285,7 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMs) {
   }
 }
 
-void calibrarEstandar() {
-  if (codigo < 1 || codigo > CANT_EJERCICIOS) {
-    Serial.println("Codigo de ejercicio invalido, uso el default.");
-    ejercicioActual = &ejercicios[0];
-  } else {
-    ejercicioActual = &ejercicios[codigo - 1];
-  }
-  calibrarEjercicio(*ejercicioActual, 4000);
-}
+
 
 // ============================================================
 // MÁQUINA DE ESTADOS DE LA REPETICIÓN
@@ -459,7 +485,7 @@ bool enviarComandoAux(const char* urlBase, const char* comando, int intentos = 3
     if (WiFi.softAPgetStationNum() == 0) return false;
 
     HTTPClient http;
-    http.setTimeout(300);
+    http.setTimeout(1000);
     http.begin(url);
     int codigoHttp = http.GET();
     http.end();
@@ -476,28 +502,36 @@ bool enviarComandoAux(const char* urlBase, const char* comando, int intentos = 3
   return false;  // se agotaron los intentos sin respuesta
 }
 
-// Devuelve true solo si ambos auxiliares confirmaron el inicio.
-// Si alguno falla, avisa por BLE indicando cuál.
-bool iniciarMedicionEnAuxiliares() {
-  bool ok1 = enviarComandoAux("http://192.168.4.2/", "iniciar");
-  bool ok2 = enviarComandoAux("http://192.168.4.3/", "iniciar");
+// Solo intenta iniciar los auxiliares que el ejercicio realmente necesita.
+// Si un auxiliar no es necesario, ni se le pregunta -- no cuenta como error.
+bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
+  bool necesitaAux1 = sensorUsado(ej, 1);
+  bool necesitaAux2 = sensorUsado(ej, 2);
 
-  if (!ok1 && !ok2) {
-    enviarFeedbackBLE("ERROR:no responden los 2 sensores auxiliares");
-  } else if (!ok1) {
+  bool ok1 = true;  // si no se necesita, se considera "ok" por defecto
+  bool ok2 = true;
+
+  if (necesitaAux1) {
+    ok1 = enviarComandoAux("http://192.168.4.2/", "iniciar");
+  }
+  if (necesitaAux2) {
+    ok2 = enviarComandoAux("http://192.168.4.3/", "iniciar");
+  }
+
+  if (necesitaAux1 && !ok1 && necesitaAux2 && !ok2) {
+    enviarFeedbackBLE("ERROR:no responden los sensores auxiliares necesarios");
+  } else if (necesitaAux1 && !ok1) {
     enviarFeedbackBLE("ERROR:sensor auxiliar 1 no responde");
-  } else if (!ok2) {
+  } else if (necesitaAux2 && !ok2) {
     enviarFeedbackBLE("ERROR:sensor auxiliar 2 no responde");
   }
 
   return ok1 && ok2;
 }
 
-void detenerMedicionEnAuxiliares() {
-  // Acá no hace falta bloquear el flujo si falla: ya se está
-  // terminando la serie de todos modos.
-  enviarComandoAux("http://192.168.4.2/", "detener", 1);
-  enviarComandoAux("http://192.168.4.3/", "detener", 1);
+void detenerMedicionEnAuxiliares(Ejercicio& ej) {
+  if (sensorUsado(ej, 1)) enviarComandoAux("http://192.168.4.2/", "detener", 1);
+  if (sensorUsado(ej, 2)) enviarComandoAux("http://192.168.4.3/", "detener", 1);
 }
 // ============================================================
 // MÁQUINA GENERAL
@@ -509,15 +543,14 @@ void Maq_General() {
       if (flagBoton) {
         flagBoton = false;
 
-        if (iniciarMedicionEnAuxiliares()) {
-          // Todo respondió bien: recién ahora calibra y arranca
-          calibrarEstandar();
+        seleccionarEjercicio();  // <-- AHORA primero, para saber qué sensores hacen falta
+
+        if (iniciarMedicionEnAuxiliares(*ejercicioActual)) {
+          calibrarEjercicio(*ejercicioActual, 4000);  // ya no se llama calibrarEstandar()
           faseRep = REPOSO;
           contadorErrores = 0;
           estadoMaq_General = MEDICIONES;
         } else {
-          // Algún auxiliar no respondió: se queda en INICIALIZACION,
-          // ya se avisó el motivo por BLE dentro de iniciarMedicionEnAuxiliares()
           Serial.println("No se pudo iniciar: revisar sensores auxiliares");
         }
       }
@@ -531,7 +564,7 @@ void Maq_General() {
       if (flagMedicion) {
         flagMedicion = false;
         mediciones();
-        recibirValoresAux();
+        recibirValoresAux(*ejercicioActual);  // <-- ahora recibe el ejercicio
         evaluarRepeticion(*ejercicioActual);
       }
       if (flagBoton) {
@@ -549,7 +582,7 @@ void Maq_General() {
         resultadoValidacion = "SERIE TERMINADA: " + String(contadorErrores) + " errores";
         segundosBoton = 0;
         flagBoton = false;
-        detenerMedicionEnAuxiliares();
+        detenerMedicionEnAuxiliares(*ejercicioActual);
         feedbackEnviado = false;  // <- resetea antes de entrar a C_APLICACION
         estadoMaq_General = C_APLICACION;
       }
@@ -580,8 +613,13 @@ void setup() {
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
+  bool apOk = WiFi.softAP(ssid, password);
+  Serial.print("AP creado correctamente: ");
+  Serial.println(apOk ? "SI" : "NO");
+  Serial.print("IP del AP: ");
+  Serial.println(WiFi.softAPIP());
   delay(500);
-
+  Serial.println(esp_reset_reason());
   inicializarBLE();
   calibrarOffsetGlobal();
 
