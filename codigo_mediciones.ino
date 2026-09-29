@@ -28,7 +28,7 @@ const int INTERVALO_MEDICION = 100;
 // ------------------------------------------------------------
 #define PIN_BOTON 1
 #define PIN_LED_R 20
-#define PIN_LED_G 9
+#define PIN_LED_G 3
 #define PIN_LED_B 10
 
 // ------------------------------------------------------------
@@ -737,7 +737,9 @@ void setup() {
   // Access Point para que se conecten hasta 2 auxiliares (mismas credenciales que
   // esperan en auxiliar.ino). Si ninguno se conecta, el resto del codigo sigue
   // funcionando igual que sin este modulo.
+  WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASSWORD);
+  delay(300); // le da tiempo al AP a levantar antes de buscar auxiliares
   detectarAuxiliares();
 
   timerMedicion.attach_ms(INTERVALO_MEDICION, funcionTimerMedicion);
