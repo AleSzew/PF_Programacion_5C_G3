@@ -101,7 +101,7 @@ void setup() {
   Serial.begin(115200);
 
   // I2C en los únicos 2 pines disponibles del ESP-01
-  Wire.begin(0, 2);  // GPIO0 = SDA, GPIO2 = SCL
+  Wire.begin(2, 0);  // GPIO0 = SDA, GPIO2 = SCL
   sensor.initialize();
 
   if (!sensor.testConnection()) {

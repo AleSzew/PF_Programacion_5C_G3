@@ -54,6 +54,7 @@ bool feedbackEnviado = false;
 #define PIN_LED_G 20
 #define PIN_LED_B 10
 
+
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3XX";
 int codigo;
@@ -61,6 +62,55 @@ int codigo;
 // IPs fijas que le vamos a asignar a cada auxiliar (ver código auxiliar más adelante)
 const char* serverAux1 = "http://192.168.4.2/datos";
 const char* serverAux2 = "http://192.168.4.3/datos";
+
+// ============================================================
+// LED RGB
+// ============================================================
+void setLED(bool r, bool g, bool b) {
+  digitalWrite(PIN_LED_R, r ? HIGH : LOW);
+  digitalWrite(PIN_LED_G, g ? HIGH : LOW);
+  digitalWrite(PIN_LED_B, b ? HIGH : LOW);
+}
+void ledRojo() {
+  setLED(1, 0, 0);
+}
+void ledVerde() {
+  setLED(0, 1, 0);
+}
+void ledAmarillo() {
+  setLED(1, 1, 0);
+}
+
+// "Hold" de 1 segundo para mostrar el resultado de una repeticion
+// sin que el resto de la logica de LED lo pise antes de tiempo.
+unsigned long tHoldLed = 0;
+bool ledEnHold = false;
+const unsigned long DURACION_HOLD_LED = 1000;
+
+void mostrarResultadoLed(bool acierto) {
+  if (acierto) ledVerde();
+  else ledRojo();
+  ledEnHold = true;
+  tHoldLed = millis();
+}
+
+// Se llama en cada vuelta del loop mientras estamos en MEDICIONES.
+// Si hay un resultado reciente sosteniendo el color, lo respeta;
+// si no, pinta segun la fase: amarillo esperando, verde moviendose bien.
+void actualizarLedMedicion(Ejercicio& ej) {
+  if (ledEnHold) {
+    if (millis() - tHoldLed >= DURACION_HOLD_LED) {
+      ledEnHold = false;
+    } else {
+      return;
+    }
+  }
+  if (faseRep == REPOSO) {
+    ledAmarillo();
+  } else {
+    ledVerde();  // la conexion con los sensores ya se valido al entrar a MEDIO/FIN
+  }
+}
 
 // ============================================================
 // OFFSET GLOBAL DEL SENSOR LOCAL
@@ -73,7 +123,7 @@ void calibrarOffsetGlobal() {
   const int MUESTRAS = 100;
   for (int i = 0; i < MUESTRAS; i++) {
 
-    int16_t ax = 0, ay = 0, az = 0;  
+    int16_t ax = 0, ay = 0, az = 0;
     sensor.getAcceleration(&ax, &ay, &az);
     float x = (ax / 16384.0) * 9.81;
     float y = (ay / 16384.0) * 9.81;
@@ -130,7 +180,7 @@ bool pedirDatosAux(const char* url, float& x, float& y, float& z) {
   Serial.print("DEBUG: payload recibido: ");
   Serial.println(payload);  // acá vas a ver "x,y,z" real, o "NOMIDIENDO", o basura
 
-  if (payload == "NOMIDIENDO") return false;  
+  if (payload == "NOMIDIENDO") return false;
   if (payload == "ERROR_I2C") {
     Serial.println("¡ERROR: MPU6050 del auxiliar desconectado o fallando (I2C)!");
     return false;
@@ -232,20 +282,41 @@ void recibirValoresAux(Ejercicio& ej) {
 // ============================================================
 // CALIBRACIÓN POR EJERCICIO
 // ============================================================
-void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMs) {
+void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   Serial.print("Calibrando: ");
   Serial.println(ej.nombre);
-  Serial.println("Hace UNA repeticion completa, lenta y CORRECTA ahora.");
+  Serial.println("Mantene la posicion de reposo...");
 
-  float minV = 999, maxV = -999;
+  // --- Paso 1: reposo ---
+  const int MUESTRAS_REPOSO = 10;
+  float sumaReposo = 0;
+  for (int i = 0; i < MUESTRAS_REPOSO; i++) {
+    mediciones();
+    recibirValoresAux(ej);
+    sumaReposo += leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
+    delay(50);
+  }
+  float reposoValor = sumaReposo / MUESTRAS_REPOSO;
 
+  Serial.println("Ahora hace UNA repeticion completa, lenta y CORRECTA...");
+  Serial.println("(la calibracion termina sola cuando volves a la posicion inicial)");
+
+  // --- Paso 2: seguir el movimiento hasta que vuelva solo ---
+  const float AMPLITUD_MINIMA_CALIB = 8.0;
+  const float FRACCION_RETORNO_CALIB = 0.25;
+  const int MUESTRAS_CONFIRM_CALIB = 3;
+
+  float minV = reposoValor, maxV = reposoValor;
+  float amplitudMax = 0;
   float sumaPostura[CANT_POSTURA] = { 0, 0 };
   float minPostura[CANT_POSTURA] = { 999, 999 };
   float maxPostura[CANT_POSTURA] = { -999, -999 };
   int cantidadLecturas = 0;
+  bool salioDeReposo = false;
+  int contadorRetornoCalib = 0;
 
   unsigned long inicio = millis();
-  while (millis() - inicio < duracionMs) {
+  while (millis() - inicio < duracionMaximaMs) {
     mediciones();
     recibirValoresAux(ej);
 
@@ -253,39 +324,50 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMs) {
     if (v < minV) minV = v;
     if (v > maxV) maxV = v;
 
-    for (int i = 0; i < CANT_POSTURA; i++) {
-      float vp = leerAngulo(ej.sensorPostura[i], ej.ejePostura[i]);
-      sumaPostura[i] += vp;
-      if (vp < minPostura[i]) minPostura[i] = vp;
-      if (vp > maxPostura[i]) maxPostura[i] = vp;
+    float distancia = fabs(v - reposoValor);
+    if (distancia > amplitudMax) amplitudMax = distancia;
+
+    for (int p = 0; p < CANT_POSTURA; p++) {
+      float vp = leerAngulo(ej.sensorPostura[p], ej.ejePostura[p]);
+      sumaPostura[p] += vp;
+      if (vp < minPostura[p]) minPostura[p] = vp;
+      if (vp > maxPostura[p]) maxPostura[p] = vp;
+    }
+    cantidadLecturas++;
+
+    if (!salioDeReposo && amplitudMax > AMPLITUD_MINIMA_CALIB) {
+      salioDeReposo = true;
     }
 
-    cantidadLecturas++;
+    if (salioDeReposo) {
+      float progresoCalib = distancia / amplitudMax;
+      if (progresoCalib <= FRACCION_RETORNO_CALIB) {
+        contadorRetornoCalib++;
+        if (contadorRetornoCalib >= MUESTRAS_CONFIRM_CALIB) break;  // ya volvio, corta antes de tiempo
+      } else {
+        contadorRetornoCalib = 0;
+      }
+    }
+
     delay(50);
   }
 
   ej.minAngulo = minV;
   ej.maxAngulo = maxV;
-
-  for (int i = 0; i < CANT_POSTURA; i++) {
-    ej.centroPostura[i] = sumaPostura[i] / cantidadLecturas;
-    float variacion = (maxPostura[i] - minPostura[i]) / 2.0;
-    ej.toleranciaPostura[i] = variacion + 5.0;
+  for (int p = 0; p < CANT_POSTURA; p++) {
+    ej.centroPostura[p] = (cantidadLecturas > 0) ? (sumaPostura[p] / cantidadLecturas) : 0;
+    float variacion = (maxPostura[p] - minPostura[p]) / 2.0;
+    ej.toleranciaPostura[p] = variacion + 5.0;
   }
 
   Serial.print("Rango principal: ");
   Serial.print(minV);
   Serial.print(" a ");
   Serial.println(maxV);
-  for (int i = 0; i < CANT_POSTURA; i++) {
-    Serial.print("Postura ");
-    Serial.print(i);
-    Serial.print(" centro: ");
-    Serial.println(ej.centroPostura[i]);
+  if (amplitudMax < AMPLITUD_MINIMA_CALIB) {
+    Serial.println("ADVERTENCIA: casi no se detecto movimiento durante la calibracion.");
   }
 }
-
-
 
 // ============================================================
 // MÁQUINA DE ESTADOS DE LA REPETICIÓN
@@ -316,6 +398,7 @@ bool posturaOK(Ejercicio& ej) {
 void evaluarRepeticion(Ejercicio& ej) {
   float v = leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
   bool okPostura = posturaOK(ej);
+  String resultado = "";
 
   float rango = ej.maxAngulo - ej.minAngulo;
   float inicio = ej.minAngulo + rango * MARGEN;
@@ -332,7 +415,7 @@ void evaluarRepeticion(Ejercicio& ej) {
 
     case MEDIO:
       if (!okPostura) {
-        resultadoValidacion = (!aux1_ok || !aux2_ok) ? "MAL (sensor desconectado)" : "MAL (postura)";
+        resultado = (!aux1_ok || !aux2_ok) ? "MAL (sensor desconectado)" : "MAL (postura)";
         contadorErrores++;
         faseRep = REPOSO;
         break;
@@ -340,49 +423,40 @@ void evaluarRepeticion(Ejercicio& ej) {
       if (abs(v - centro) <= rango * MARGEN) {
         faseRep = FIN;
       } else if (millis() - tInicioRep > T_MAX) {
-        resultadoValidacion = "MAL (tiempo)";
-        contadorErrores++;
-        faseRep = REPOSO;
-      }
-      break;
-
-      if (abs(v - centro) <= rango * MARGEN) {
-        faseRep = FIN;
-      } else if (millis() - tInicioRep > T_MAX) {
-        resultadoValidacion = "MAL (tiempo)";
+        resultado = "MAL (tiempo)";
         contadorErrores++;
         faseRep = REPOSO;
       }
       break;
 
     case FIN:
-
-      if (!okPostura) {
-        resultadoValidacion = "MAL (postura)";
-        contadorErrores++;
-        faseRep = REPOSO;
+      {
+        if (!okPostura) {
+          resultado = "MAL (postura)";
+          contadorErrores++;
+          faseRep = REPOSO;
+          break;
+        }
+        unsigned long duracion = millis() - tInicioRep;
+        if (v >= final_) {
+          resultado = (duracion >= T_MIN) ? "BIEN" : "MAL (muy rapido)";
+          if (resultado != "BIEN") contadorErrores++;
+          faseRep = REPOSO;
+        } else if (duracion > T_MAX) {
+          resultado = "MAL (tiempo)";
+          contadorErrores++;
+          faseRep = REPOSO;
+        }
         break;
       }
-      unsigned long duracion = millis() - tInicioRep;
-      if (v >= final_) {
-        if (duracion >= T_MIN) {
-          resultadoValidacion = "BIEN";
-        } else {
-          resultadoValidacion = "MAL (muy rapido)";
-          contadorErrores++;
-        }
-        faseRep = REPOSO;
-      } else if (duracion > T_MAX) {
-        resultadoValidacion = "MAL (tiempo)";
-        contadorErrores++;
-        faseRep = REPOSO;
-      }
-      break;
   }
-  Serial.println(resultadoValidacion);
+
+  if (resultado != "") {
+    resultadoValidacion = resultado;
+    Serial.println(resultadoValidacion);
+    mostrarResultadoLed(resultado == "BIEN");
+  }
 }
-
-
 
 // ============================================================
 // BLE
@@ -539,18 +613,21 @@ void detenerMedicionEnAuxiliares(Ejercicio& ej) {
 void Maq_General() {
   switch (estadoMaq_General) {
     case INICIALIZACION:
-      digitalWrite(PIN_LED_G, HIGH);
+      if (!ledEnHold) ledVerde();  // reposo: listo para que toquen el boton
       if (flagBoton) {
         flagBoton = false;
+        ledAmarillo();  // arrancando: eligiendo ejercicio y avisando a los auxiliares
 
-        seleccionarEjercicio();  // <-- AHORA primero, para saber qué sensores hacen falta
+        seleccionarEjercicio();
 
         if (iniciarMedicionEnAuxiliares(*ejercicioActual)) {
-          calibrarEjercicio(*ejercicioActual, 4000);  // ya no se llama calibrarEstandar()
+          ledVerde();                                 // conexion con los sensores necesarios OK
+          calibrarEjercicio(*ejercicioActual, 8000);  // 8000 = tope de seguridad, no fijo
           faseRep = REPOSO;
           contadorErrores = 0;
           estadoMaq_General = MEDICIONES;
         } else {
+          ledRojo();  // algun auxiliar necesario no respondio
           Serial.println("No se pudo iniciar: revisar sensores auxiliares");
         }
       }
@@ -560,13 +637,13 @@ void Maq_General() {
       break;
 
     case MEDICIONES:
-      digitalWrite(PIN_LED_G, LOW);
       if (flagMedicion) {
         flagMedicion = false;
         mediciones();
-        recibirValoresAux(*ejercicioActual);  // <-- ahora recibe el ejercicio
+        recibirValoresAux(*ejercicioActual);
         evaluarRepeticion(*ejercicioActual);
       }
+      actualizarLedMedicion(*ejercicioActual);  // se evalua cada vuelta, no solo en el tick de 100ms
       if (flagBoton) {
         flagBoton = false;
         estadoMaq_General = ANALISIS_SERIE;
@@ -599,6 +676,7 @@ void Maq_General() {
       }
       break;
   }
+  h
 }
 
 void setup() {
@@ -632,3 +710,4 @@ void loop() {
   maquinaAntirrebote();
   Maq_General();
 }
+
