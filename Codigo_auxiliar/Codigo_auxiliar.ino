@@ -12,6 +12,7 @@ ESP8266WebServer server(80);
 // RED: esta placa se conecta como cliente al ESP32 principal,
 // que actúa de Access Point ("ESP32_C3_Server").
 // ============================================================
+
 const char* ssid_principal = "ESP32_C3_Server";
 const char* password_principal = "GRUPO3XX";
 
@@ -46,9 +47,15 @@ void handleDetener() {
 
 void handleDatos() {
   if (!midiendo) {
-    // Devuelve algo identificable como "no estoy midiendo"
-    // en vez de una lectura real, para que el principal lo distinga
     server.send(200, "text/plain", "NOMIDIENDO");
+    return;
+  }
+
+  // Chequeo rápido de que el MPU6050 sigue respondiendo por I2C
+  Wire.beginTransmission(0x68);  // dirección típica del MPU6050
+  byte error = Wire.endTransmission();
+  if (error != 0) {
+    server.send(200, "text/plain", "ERROR_I2C");
     return;
   }
 
@@ -116,7 +123,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.config(miIP, gateway, subred);
   WiFi.begin(ssid_principal, password_principal);
-
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);  // <-- AGREGAR: evita que el radio se apague entre paquetes
   Serial.println("Conectando al ESP32 principal...");
   unsigned long inicio = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - inicio < 15000) {
@@ -133,8 +140,8 @@ void setup() {
   }
 
   server.on("/datos", handleDatos);
-  server.on("/iniciar", handleIniciar);  
-  server.on("/detener", handleDetener); 
+  server.on("/iniciar", handleIniciar);
+  server.on("/detener", handleDetener);
   server.begin();
 }
 
