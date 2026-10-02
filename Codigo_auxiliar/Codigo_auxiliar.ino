@@ -1,70 +1,30 @@
-//no borrar comentarios
+// ESP-01 (Auxiliar) - Comunicación UDP Corregida
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
+#include <WiFiUdp.h>
 #include "Wire.h"
 #include "I2Cdev.h"
 #include "MPU6050.h"
 
 MPU6050 sensor;
-ESP8266WebServer server(80);
-
-// ============================================================
-// RED: esta placa se conecta como cliente al ESP32 principal,
-// que actúa de Access Point ("ESP32_C3_Server").
-// ============================================================
+WiFiUDP udp;
+const uint16_t PuertoUDP = 8888;
 
 const char* ssid_principal = "ESP32_C3_Server";
 const char* password_principal = "GRUPO3XX";
 
-// IP FIJA de esta placa. Esto es lo único que cambia entre
-// el auxiliar 1 y el auxiliar 2: acá pongo .2 para el auxiliar 1.
-// Para el auxiliar 2, cambiar SOLO esta línea a 192.168.4.3
+// CAMBIAR A 192.168.4.3 EN EL AUXILIAR 2
 IPAddress miIP(192, 168, 4, 2);
-IPAddress gateway(192, 168, 4, 1);  // el ESP32 principal siempre es .1 en modo AP
+IPAddress gateway(192, 168, 4, 1);
 IPAddress subred(255, 255, 255, 0);
 
-// ============================================================
-// OFFSET PROPIO DE ESTA PLACA
-// ============================================================
-// Cada auxiliar tiene su propio offset porque está montado en
-// un lugar distinto del cuerpo. Se calcula una vez al arrancar,
-// igual que en el principal.
 float offset_X, offset_Y, offset_Z;
 float inclX, inclY, inclZ;
-bool midiendo = false;  // true mientras el principal esté calibrando o midiendo
-
-void handleIniciar() {
-  midiendo = true;
-  Serial.println("Iniciando medicion (orden del principal)");
-  server.send(200, "text/plain", "OK");
-}
-
-void handleDetener() {
-  midiendo = false;
-  Serial.println("Deteniendo medicion (orden del principal)");
-  server.send(200, "text/plain", "OK");
-}
-
-void handleDatos() {
-  if (!midiendo) {
-    server.send(200, "text/plain", "NOMIDIENDO");
-    return;
-  }
-
-  // Chequeo rápido de que el MPU6050 sigue respondiendo por I2C
-  Wire.beginTransmission(0x68);  // dirección típica del MPU6050
-  byte error = Wire.endTransmission();
-  if (error != 0) {
-    server.send(200, "text/plain", "ERROR_I2C");
-    return;
-  }
-
-  leerInclinacion();
-  String respuesta = String(inclX, 2) + "," + String(inclY, 2) + "," + String(inclZ, 2);
-  server.send(200, "text/plain", respuesta);
-}
+bool midiendo = false;
+unsigned long ultimoEnvioUDP = 0;
+const unsigned long INTERVALO_ENVIO_UDP = 50; // Envío a 20Hz
 
 void calibrarOffset() {
+  Serial.println("Calibrando offset auxiliar...");
   float sumaX = 0, sumaY = 0, sumaZ = 0;
   const int MUESTRAS = 100;
   for (int i = 0; i < MUESTRAS; i++) {
@@ -81,10 +41,16 @@ void calibrarOffset() {
   offset_X = sumaX / MUESTRAS;
   offset_Y = sumaY / MUESTRAS;
   offset_Z = sumaZ / MUESTRAS;
+  Serial.println("Calibracion auxiliar OK.");
 }
 
-// Lee el sensor y actualiza inclX/Y/Z con el offset ya aplicado
-void leerInclinacion() {
+bool leerInclinacion() {
+  Wire.beginTransmission(0x68);
+  if (Wire.endTransmission() != 0) {
+    Wire.begin(2, 0); // Reintento de reinicio I2C
+    return false;
+  }
+
   int16_t ax, ay, az;
   sensor.getAcceleration(&ax, &ay, &az);
   float x = (ax / 16384.0) * 9.81;
@@ -94,65 +60,77 @@ void leerInclinacion() {
   inclX = atan2(x, sqrt(y * y + z * z)) * 180.0 / PI - offset_X;
   inclY = atan2(y, sqrt(x * x + z * z)) * 180.0 / PI - offset_Y;
   inclZ = atan2(z, sqrt(x * x + y * y)) * 180.0 / PI - offset_Z;
+  return true;
 }
-
 
 void setup() {
   Serial.begin(115200);
+  delay(500);
+  Serial.println("\n--- ESP-01 AUXILIAR INICIANDO ---");
 
-  // I2C en los únicos 2 pines disponibles del ESP-01
-  Wire.begin(2, 0);  // GPIO0 = SDA, GPIO2 = SCL
+  Wire.begin(2, 0); // GPIO0 = SDA, GPIO2 = SCL
   sensor.initialize();
 
-  if (!sensor.testConnection()) {
-    Serial.println("Error: MPU6050 no responde. Revisar cableado I2C.");
-  }
-  Serial.println("Escaneando redes cercanas...");
-  int redesEncontradas = WiFi.scanNetworks();
-  for (int i = 0; i < redesEncontradas; i++) {
-    Serial.print(WiFi.SSID(i));
-    Serial.print(" (canal ");
-    Serial.print(WiFi.channel(i));
-    Serial.print(", RSSI ");
-    Serial.print(WiFi.RSSI(i));
-    Serial.println(")");
-  }
-  // Conexión WiFi con IP fija (evita el problema de DHCP que
-  // vimos: acá SIEMPRE va a ser 192.168.4.2, sin importar el
-  // orden en que se prendan las placas)
   WiFi.mode(WIFI_STA);
   WiFi.config(miIP, gateway, subred);
   WiFi.begin(ssid_principal, password_principal);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);  // <-- AGREGAR: evita que el radio se apague entre paquetes
-  Serial.println("Conectando al ESP32 principal...");
-  unsigned long inicio = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - inicio < 15000) {
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+
+  Serial.print("Conectando a AP ESP32...");
+  unsigned long inicioWifi = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - inicioWifi < 10000) {
     delay(300);
     Serial.print(".");
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nConectado. IP asignada:");
+    Serial.println("\nConectado a WiFi AP. IP:");
     Serial.println(WiFi.localIP());
-    calibrarOffset();  // recién calibra si logró conectarse
   } else {
-    Serial.println("\nNo se pudo conectar al AP. Reintentando en loop().");
+    Serial.println("\nSin conexion inicial con AP. Reintentando en loop().");
   }
 
-  server.on("/datos", handleDatos);
-  server.on("/iniciar", handleIniciar);
-  server.on("/detener", handleDetener);
-  server.begin();
+  calibrarOffset();
+  udp.begin(PuertoUDP);
+  Serial.println("UDP Listo en puerto 8888");
 }
 
 void loop() {
-  // Si se cayó la conexión (el AP se reinició, por ejemplo),
-  // intenta reconectar sin bloquear el resto del programa.
   if (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(ssid_principal, password_principal);
-    delay(1000);
+    static unsigned long ultimoReintento = 0;
+    if (millis() - ultimoReintento > 2000) {
+      ultimoReintento = millis();
+      WiFi.begin(ssid_principal, password_principal);
+    }
     return;
   }
 
-  server.handleClient();
+  int packetSize = udp.parsePacket();
+  if (packetSize > 0) {
+    char packetBuffer[32] = {0};
+    udp.read(packetBuffer, sizeof(packetBuffer) - 1);
+    String comando = String(packetBuffer);
+    comando.trim();
+
+    if (comando == "INICIAR") {
+      midiendo = true;
+      Serial.println("Comando UDP: INICIAR medicion");
+    } else if (comando == "DETENER") {
+      midiendo = false;
+      Serial.println("Comando UDP: DETENER medicion");
+    }
+  }
+
+  if (midiendo && (millis() - ultimoEnvioUDP >= INTERVALO_ENVIO_UDP)) {
+    ultimoEnvioUDP = millis();
+
+    udp.beginPacket(gateway, PuertoUDP);
+    if (!leerInclinacion()) {
+      udp.print("ERROR_I2C");
+    } else {
+      String msg = String(inclX, 2) + "," + String(inclY, 2) + "," + String(inclZ, 2);
+      udp.print(msg);
+    }
+    udp.endPacket();
+  }
 }
