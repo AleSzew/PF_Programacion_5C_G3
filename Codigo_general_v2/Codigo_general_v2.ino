@@ -9,8 +9,8 @@
 
 struct Ejercicio {
   const char* nombre;
-  uint8_t sensorPrincipal; // 0=Local, 1=Aux1, 2=Aux2
-  uint8_t ejePrincipal;    // 0=X, 1=Y, 2=Z
+  uint8_t sensorPrincipal;  // 0=Local, 1=Aux1, 2=Aux2
+  uint8_t ejePrincipal;     // 0=X, 1=Y, 2=Z
   float minAngulo;
   float maxAngulo;
   uint8_t sensorPostura[2];
@@ -21,11 +21,11 @@ struct Ejercicio {
 
 #define CANT_EJERCICIOS 5
 Ejercicio ejercicios[CANT_EJERCICIOS] = {
-  { "Curl de biceps",     0, 1, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Elevaciones Lat.",   0, 0, 0, 0, { 1, 99 }, { 1, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Press Militar",      0, 2, 0, 0, { 1, 2  }, { 0, 2  }, { 0, 0 }, { 0, 0 } },
-  { "Sentadilla",         0, 0, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Peso Muerto",        1, 0, 0, 0, { 0, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } }
+  { "Curl de biceps", 0, 1, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
+  { "Elevaciones Lat.", 0, 0, 0, 0, { 1, 99 }, { 1, 99 }, { 0, 0 }, { 0, 0 } },
+  { "Press Militar", 0, 2, 0, 0, { 1, 2 }, { 0, 2 }, { 0, 0 }, { 0, 0 } },
+  { "Sentadilla", 0, 0, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
+  { "Peso Muerto", 1, 0, 0, 0, { 0, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } }
 };
 
 Ejercicio* ejercicioActual = &ejercicios[0];
@@ -47,10 +47,15 @@ int contadorErrores = 0;
 bool flagMedicion = false;
 int INTERVALO_MEDICION = 100;
 
-typedef enum { INICIALIZACION, MEDICIONES, ANALISIS_SERIE, C_APLICACION } estadoMaq_General_t;
+typedef enum { INICIALIZACION,
+               MEDICIONES,
+               ANALISIS_SERIE,
+               C_APLICACION } estadoMaq_General_t;
 estadoMaq_General_t estadoMaq_General = INICIALIZACION;
 
-typedef enum { ESPERA, CONFIRMACION, LIBERACION } estadoAntirrebote_t;
+typedef enum { ESPERA,
+               CONFIRMACION,
+               LIBERACION } estadoAntirrebote_t;
 estadoAntirrebote_t estadoBoton = ESPERA;
 int msBoton = 0;
 bool flagBoton = false;
@@ -85,9 +90,15 @@ void setLED(bool r, bool g, bool b) {
   digitalWrite(PIN_LED_G, g ? HIGH : LOW);
   digitalWrite(PIN_LED_B, b ? HIGH : LOW);
 }
-void ledRojo() { setLED(1, 0, 0); }
-void ledVerde() { setLED(0, 1, 0); }
-void ledAmarillo() { setLED(1, 1, 0); }
+void ledRojo() {
+  setLED(1, 0, 0);
+}
+void ledVerde() {
+  setLED(0, 1, 0);
+}
+void ledAmarillo() {
+  setLED(1, 1, 0);
+}
 
 unsigned long tHoldLed = 0;
 bool ledEnHold = false;
@@ -138,10 +149,15 @@ void recibirPaquetesUDP() {
   int packetSize = udp.parsePacket();
   while (packetSize > 0) {
     IPAddress remoteIP = udp.remoteIP();
-    char buffer[64] = {0};
+    char buffer[64] = { 0 };
     udp.read(buffer, sizeof(buffer) - 1);
     String payload = String(buffer);
 
+    /*Serial.print("UDP recibido de ");
+    Serial.print(remoteIP);
+    Serial.print(": ");
+    Serial.println(payload);  // <-- AGREGAR
+    */
     if (payload != "ERROR_I2C" && payload != "NOMIDIENDO") {
       int c1 = payload.indexOf(',');
       int c2 = payload.indexOf(',', c1 + 1);
@@ -151,10 +167,14 @@ void recibirPaquetesUDP() {
         float z = payload.substring(c2 + 1).toFloat();
 
         if (remoteIP == ipAux1) {
-          inclX_aux1 = x; inclY_aux1 = y; inclZ_aux1 = z;
+          inclX_aux1 = x;
+          inclY_aux1 = y;
+          inclZ_aux1 = z;
           tUltimoPaqueteAux1 = millis();
         } else if (remoteIP == ipAux2) {
-          inclX_aux2 = x; inclY_aux2 = y; inclZ_aux2 = z;
+          inclX_aux2 = x;
+          inclY_aux2 = y;
+          inclZ_aux2 = z;
           tUltimoPaqueteAux2 = millis();
         }
       }
@@ -169,11 +189,17 @@ void recibirPaquetesUDP() {
 float leerAngulo(uint8_t sensorId, uint8_t eje) {
   float x, y, z;
   if (sensorId == 0) {
-    x = inclX_local; y = inclY_local; z = inclZ_local;
+    x = inclX_local;
+    y = inclY_local;
+    z = inclZ_local;
   } else if (sensorId == 1) {
-    x = inclX_aux1; y = inclY_aux1; z = inclZ_aux1;
+    x = inclX_aux1;
+    y = inclY_aux1;
+    z = inclZ_aux1;
   } else {
-    x = inclX_aux2; y = inclY_aux2; z = inclZ_aux2;
+    x = inclX_aux2;
+    y = inclY_aux2;
+    z = inclZ_aux2;
   }
   return (eje == 0) ? x : ((eje == 1) ? y : z);
 }
@@ -221,7 +247,11 @@ bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
   // Handshake con reintentos durante un máximo de 2.5 segundos
   unsigned long inicioHandshake = millis();
   while (millis() - inicioHandshake < 2500) {
-    enviarComandoUDPAuxiliares("INICIAR", ej);
+    // Manda 3 veces seguidas en vez de una, para compensar perdida de paquetes UDP
+    for (int i = 0; i < 3; i++) {
+      enviarComandoUDPAuxiliares("INICIAR", ej);
+      delay(20);
+    }
 
     unsigned long tPausa = millis();
     while (millis() - tPausa < 150) {
@@ -231,13 +261,11 @@ bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
 
     bool aux1Listo = !necesitaAux1 || aux1_ok;
     bool aux2Listo = !necesitaAux2 || aux2_ok;
-
     if (aux1Listo && aux2Listo) {
       Serial.println(" Handshake UDP exitoso. Auxiliares transmitiendo.");
       return true;
     }
   }
-
   Serial.println(" Timeout UDP: Un auxiliar requerido no respondio.");
   if (necesitaAux1 && !aux1_ok) Serial.println(" -> Auxiliar 1 sin señal");
   if (necesitaAux2 && !aux2_ok) Serial.println(" -> Auxiliar 2 sin señal");
@@ -245,19 +273,75 @@ bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
   return false;
 }
 
+enum FaseRep { REPOSO,
+               EN_MOVIMIENTO };
+FaseRep faseRep = REPOSO;
+unsigned long tInicioRep = 0;
+
+enum SubFaseRep { SUBIENDO,
+                  BAJANDO };
+SubFaseRep subFaseRep = SUBIENDO;
+const float MARGEN_SUBFASE = 0.05;
+
+float baseLocal = 0;           // "cero" adaptativo del ejercicio actual
+float amplitudObjetivo = 1.0;  // amplitud esperada, segun calibracion
+int direccionMovimiento = 1;   // +1 si el pico esta por encima del reposo, -1 si no
+float picoAlcanzado = 0;
+
+const float ALPHA_BASE_REPOSO = 0.02;
+const float TOLERANCIA_REPOSO_DEG = 4.0;
+const float TOLERANCIA_VEL_DPS = 15.0;
+const float UMBRAL_SALIDA = 0.15;
+const float UMBRAL_PICO = 0.60;
+const float UMBRAL_RETORNO = 0.25;
+const int MUESTRAS_CONFIRMACION = 3;
+
+unsigned long duracionCalibrada = 1500;
+const float FACTOR_DURACION_MIN = 0.4;
+const float FACTOR_DURACION_MAX = 2.2;
+const unsigned long T_MIN = 200;
+const unsigned long T_MAX = 5000;
+
+int contadorRetorno = 0;
+int contadorErrorVelocidad = 0;
+
+float progreso(float v) {
+  return direccionMovimiento * (v - baseLocal) / amplitudObjetivo;
+}
+
+
+
+
 void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   Serial.print("Calibrando movimiento para: ");
   Serial.println(ej.nombre);
+  Serial.println("Mantene la posicion de reposo...");
 
+  // --- Paso 1: reposo del sensor principal + de los sensores de postura ---
   const int MUESTRAS_REPOSO = 10;
   float sumaReposo = 0;
+  float sumaPosturaReposo[2] = { 0, 0 };
+  int muestrasPostura[2] = { 0, 0 };
+
   for (int i = 0; i < MUESTRAS_REPOSO; i++) {
     mediciones();
     recibirPaquetesUDP();
     sumaReposo += leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
+    for (int p = 0; p < 2; p++) {
+      if (ej.sensorPostura[p] == 99) continue;
+      sumaPosturaReposo[p] += leerAngulo(ej.sensorPostura[p], ej.ejePostura[p]);
+      muestrasPostura[p]++;
+    }
     delay(50);
   }
   float reposoValor = sumaReposo / MUESTRAS_REPOSO;
+  float reposoPostura[2] = { 0, 0 };
+  for (int p = 0; p < 2; p++) {
+    if (muestrasPostura[p] > 0) reposoPostura[p] = sumaPosturaReposo[p] / muestrasPostura[p];
+  }
+
+  Serial.println("Ahora hace UNA repeticion completa, lenta y CORRECTA...");
+  Serial.println("(la calibracion termina sola cuando volves a la posicion inicial)");
 
   const float AMPLITUD_MINIMA_CALIB = 8.0;
   const float FRACCION_RETORNO_CALIB = 0.25;
@@ -265,12 +349,10 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
 
   float minV = reposoValor, maxV = reposoValor;
   float amplitudMax = 0;
-  float sumaPostura[2] = { 0, 0 };
-  float minPostura[2] = { 999, 999 };
-  float maxPostura[2] = { -999, -999 };
-  int cantidadLecturas = 0;
+  float lateralMax[2] = { 0, 0 };
   bool salioDeReposo = false;
   int contadorRetornoCalib = 0;
+  unsigned long tInicioMovCalib = 0;
 
   unsigned long inicio = millis();
   while (millis() - inicio < duracionMaximaMs) {
@@ -287,14 +369,13 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
     for (int p = 0; p < 2; p++) {
       if (ej.sensorPostura[p] == 99) continue;
       float vp = leerAngulo(ej.sensorPostura[p], ej.ejePostura[p]);
-      sumaPostura[p] += vp;
-      if (vp < minPostura[p]) minPostura[p] = vp;
-      if (vp > maxPostura[p]) maxPostura[p] = vp;
+      float d = fabs(vp - reposoPostura[p]);
+      if (d > lateralMax[p]) lateralMax[p] = d;
     }
-    cantidadLecturas++;
 
     if (!salioDeReposo && amplitudMax > AMPLITUD_MINIMA_CALIB) {
       salioDeReposo = true;
+      tInicioMovCalib = millis();
     }
 
     if (salioDeReposo) {
@@ -311,21 +392,44 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
 
   ej.minAngulo = minV;
   ej.maxAngulo = maxV;
+
+  float picoValor = (fabs(maxV - reposoValor) > fabs(minV - reposoValor)) ? maxV : minV;
+
+  baseLocal = reposoValor;
+  amplitudObjetivo = fabs(picoValor - reposoValor);
+  if (amplitudObjetivo < 1.0) amplitudObjetivo = 1.0;
+  direccionMovimiento = (picoValor >= reposoValor) ? 1 : -1;
+
+  const float FACTOR_MARGEN_LATERAL = 1.5;
+  const float TOLERANCIA_LATERAL_MINIMA = 3.0;
   for (int p = 0; p < 2; p++) {
     if (ej.sensorPostura[p] == 99) continue;
-    ej.centroPostura[p] = (cantidadLecturas > 0) ? (sumaPostura[p] / cantidadLecturas) : 0;
-    float variacion = (maxPostura[p] - minPostura[p]) / 2.0;
-    ej.toleranciaPostura[p] = variacion + 5.0;
+    ej.centroPostura[p] = reposoPostura[p];
+    float tol = lateralMax[p] * FACTOR_MARGEN_LATERAL;
+    if (tol < TOLERANCIA_LATERAL_MINIMA) tol = TOLERANCIA_LATERAL_MINIMA;
+    ej.toleranciaPostura[p] = tol;
+  }
+
+  if (tInicioMovCalib > 0) {
+    duracionCalibrada = millis() - tInicioMovCalib;
+  }
+  if (duracionCalibrada < 300) duracionCalibrada = 1500;
+
+  Serial.print("Reposo: ");
+  Serial.print(reposoValor);
+  Serial.print(" | Pico: ");
+  Serial.print(picoValor);
+  Serial.print(" | Amplitud: ");
+  Serial.print(amplitudMax);
+  Serial.print(" | Duracion calibrada: ");
+  Serial.print(duracionCalibrada);
+  Serial.println(" ms");
+
+  if (amplitudMax < AMPLITUD_MINIMA_CALIB) {
+    Serial.println("ADVERTENCIA: casi no se detecto movimiento durante la calibracion.");
   }
 }
 
-enum FaseRep { REPOSO, MEDIO, FIN };
-FaseRep faseRep = REPOSO;
-unsigned long tInicioRep = 0;
-
-const unsigned long T_MIN = 200;
-const unsigned long T_MAX = 5000;
-const float MARGEN = 0.15;
 
 void enviarFeedbackBLE(const String& mensaje) {
   if (pCharacteristic != nullptr && pServer->getConnectedCount() > 0) {
@@ -356,59 +460,104 @@ bool posturaOK(Ejercicio& ej) {
   return true;
 }
 
-void evaluarRepeticion(Ejercicio& ej) {
+// Devuelve false si el sensor principal del ejercicio es un auxiliar
+// y ese auxiliar esta desconectado -- evita evaluar contra datos viejos.
+bool sensorPrincipalOK(Ejercicio& ej) {
+  if (ej.sensorPrincipal == 1 && !aux1_ok) return false;
+  if (ej.sensorPrincipal == 2 && !aux2_ok) return false;
+  return true;
+}
+
+void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
+  if (!sensorPrincipalOK(ej)) {
+    if (faseRep != REPOSO) {
+      resultadoValidacion = "MAL (sensor principal desconectado)";
+      Serial.println("Resultado Repeticion: " + resultadoValidacion);
+      contadorErrores++;
+      faseRep = REPOSO;
+      contadorErrorVelocidad = 0;
+      contadorRetorno = 0;
+      enviarFeedbackBLE("REP:" + resultadoValidacion);
+      mostrarResultadoLed(false);
+    }
+    return;
+  }
+
   float v = leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
+  float p = progreso(v);
   bool okPostura = posturaOK(ej);
   String resultado = "";
 
-  float rango = ej.maxAngulo - ej.minAngulo;
-  float inicio = ej.minAngulo + rango * MARGEN;
-  float centro = ej.minAngulo + rango * 0.50;
-  float final_ = ej.maxAngulo - rango * MARGEN;
-
   switch (faseRep) {
     case REPOSO:
-      if (v <= inicio) {
-        faseRep = MEDIO;
+      // Mientras esta quieto cerca del cero actual, el cero se va ajustando solo
+      if (fabs(v - baseLocal) < TOLERANCIA_REPOSO_DEG) {
+        baseLocal = ALPHA_BASE_REPOSO * v + (1 - ALPHA_BASE_REPOSO) * baseLocal;
+      }
+
+      if (p >= UMBRAL_SALIDA) {
+        faseRep = EN_MOVIMIENTO;
+        subFaseRep = SUBIENDO;
         tInicioRep = millis();
-        enviarFeedbackBLE("FASE:INICIO");
+        picoAlcanzado = p;
+        contadorRetorno = 0;
+        contadorErrorVelocidad = 0;
       }
       break;
 
-    case MEDIO:
-      if (!okPostura) {
-        resultado = (!aux1_ok || !aux2_ok) ? "MAL (sensor desconectado)" : "MAL (postura)";
-        contadorErrores++;
-        faseRep = REPOSO;
-        break;
-      }
-      if (abs(v - centro) <= rango * MARGEN) {
-        faseRep = FIN;
-        enviarFeedbackBLE("FASE:PICO");
-      } else if (millis() - tInicioRep > T_MAX) {
-        resultado = "MAL (tiempo)";
-        contadorErrores++;
-        faseRep = REPOSO;
-      }
-      break;
-
-    case FIN:
+    case EN_MOVIMIENTO:
       {
-        if (!okPostura) {
-          resultado = "MAL (postura)";
-          contadorErrores++;
-          faseRep = REPOSO;
-          break;
+        if (p > picoAlcanzado) picoAlcanzado = p;
+
+        if (subFaseRep == SUBIENDO && p < picoAlcanzado - MARGEN_SUBFASE) {
+          subFaseRep = BAJANDO;
         }
-        unsigned long duracion = millis() - tInicioRep;
-        if (v >= final_) {
-          resultado = (duracion >= T_MIN) ? "BIEN" : "MAL (muy rapido)";
-          if (resultado != "BIEN") contadorErrores++;
+
+        // Velocidad esperada segun la subfase: yendo al pico, positiva; volviendo, negativa.
+        float velEnDireccion = direccionMovimiento * velocidadActual;
+        float velEsperada = (subFaseRep == SUBIENDO) ? velEnDireccion : -velEnDireccion;
+        if (velEsperada < -TOLERANCIA_VEL_DPS) {
+          contadorErrorVelocidad++;
+        } else {
+          contadorErrorVelocidad = 0;
+        }
+
+        if (contadorErrorVelocidad >= MUESTRAS_CONFIRMACION) {
+          resultado = "MAL (velocidad o sentido del movimiento incorrecto)";
           faseRep = REPOSO;
-        } else if (duracion > T_MAX) {
-          resultado = "MAL (tiempo)";
-          contadorErrores++;
+          contadorRetorno = 0;
+        } else if (!okPostura) {
+          resultado = (!aux1_ok || !aux2_ok) ? "MAL (sensor desconectado)" : "MAL (postura)";
           faseRep = REPOSO;
+          contadorRetorno = 0;
+        } else if (p <= UMBRAL_RETORNO || fabs(v - baseLocal) <= TOLERANCIA_REPOSO_DEG) {
+          contadorRetorno++;
+          if (contadorRetorno >= MUESTRAS_CONFIRMACION) {
+            unsigned long duracion = millis() - tInicioRep;
+            unsigned long duracionMin = (unsigned long)(duracionCalibrada * FACTOR_DURACION_MIN);
+            unsigned long duracionMax = (unsigned long)(duracionCalibrada * FACTOR_DURACION_MAX);
+            if (duracionMin < T_MIN) duracionMin = T_MIN;
+
+            if (picoAlcanzado < UMBRAL_PICO) {
+              resultado = "MAL (rango de movimiento incompleto)";
+            } else if (duracion < duracionMin) {
+              resultado = "MAL (muy rapido)";
+            } else if (duracion > duracionMax) {
+              resultado = "MAL (muy lento)";
+            } else {
+              resultado = "BIEN";
+            }
+            faseRep = REPOSO;
+            contadorRetorno = 0;
+          }
+        } else {
+          contadorRetorno = 0;
+        }
+
+        if (faseRep == EN_MOVIMIENTO && millis() - tInicioRep > T_MAX) {
+          resultado = "MAL (tiempo superado)";
+          faseRep = REPOSO;
+          contadorRetorno = 0;
         }
         break;
       }
@@ -416,11 +565,33 @@ void evaluarRepeticion(Ejercicio& ej) {
 
   if (resultado != "") {
     resultadoValidacion = resultado;
-    Serial.print("Resultado Repeticion: ");
-    Serial.println(resultadoValidacion);
+    Serial.println("Resultado Repeticion: " + resultadoValidacion);
     enviarFeedbackBLE("REP:" + resultado);
     mostrarResultadoLed(resultado == "BIEN");
+    contadorErrorVelocidad = 0;
+    if (resultado != "BIEN") contadorErrores++;
   }
+}
+
+
+// ============================================================
+// VELOCIDAD GENÉRICA POR DIFERENCIACIÓN (sirve para local o auxiliar)
+// ============================================================
+float anguloAnteriorPrincipal = 0;
+unsigned long tAnguloAnteriorPrincipal = 0;
+float velocidadPrincipal = 0;
+const float ALPHA_VEL = 0.4;  // mismo suavizado que usaba doc 23
+
+float calcularVelocidad(float anguloActual) {
+  unsigned long ahora = millis();
+  float dt = (tAnguloAnteriorPrincipal == 0) ? 0.1 : (ahora - tAnguloAnteriorPrincipal) / 1000.0;
+  if (dt <= 0 || dt > 0.5) dt = 0.1;
+  tAnguloAnteriorPrincipal = ahora;
+
+  float velNueva = (anguloActual - anguloAnteriorPrincipal) / dt;
+  velocidadPrincipal = ALPHA_VEL * velNueva + (1 - ALPHA_VEL) * velocidadPrincipal;
+  anguloAnteriorPrincipal = anguloActual;
+  return velocidadPrincipal;
 }
 
 class MiServerCallbacks : public NimBLEServerCallbacks {
@@ -463,11 +634,15 @@ void inicializarBLE() {
   NimBLEDevice::startAdvertising();
 }
 
+
 void maquinaAntirrebote() {
   bool lecturaBoton = digitalRead(PIN_BOTON);
   switch (estadoBoton) {
     case ESPERA:
-      if (lecturaBoton == LOW) { msBoton = 0; estadoBoton = CONFIRMACION; }
+      if (lecturaBoton == LOW) {
+        msBoton = 0;
+        estadoBoton = CONFIRMACION;
+      }
       break;
     case CONFIRMACION:
       if (msBoton >= T_REBOTE) {
@@ -476,7 +651,10 @@ void maquinaAntirrebote() {
       }
       break;
     case LIBERACION:
-      if (lecturaBoton == HIGH) { flagBoton = true; estadoBoton = ESPERA; }
+      if (lecturaBoton == HIGH) {
+        flagBoton = true;
+        estadoBoton = ESPERA;
+      }
       break;
   }
 }
@@ -485,8 +663,12 @@ void funcionTimerBoton() {
   if (digitalRead(PIN_BOTON) == LOW) segundosBoton++;
   else segundosBoton = 0;
 }
-void funcionTimerAntirrebote() { msBoton++; }
-void funcionTimerMedicion() { flagMedicion = true; }
+void funcionTimerAntirrebote() {
+  msBoton++;
+}
+void funcionTimerMedicion() {
+  flagMedicion = true;
+}
 
 void Maq_General() {
   switch (estadoMaq_General) {
@@ -509,11 +691,15 @@ void Maq_General() {
           calibrarEjercicio(*ejercicioActual, 8000);
           faseRep = REPOSO;
           contadorErrores = 0;
+          contadorErrorVelocidad = 0;
+          contadorRetorno = 0;    // <-- AGREGAR
+          subFaseRep = SUBIENDO;  // <-- AGREGAR
+          estadoMaq_General = MEDICIONES;
           estadoMaq_General = MEDICIONES;
           enviarFeedbackBLE("ESTADO:MEDICION_INICIADA");
           Serial.println(">>> ESTADO ACTUAL: MEDICIONES <<<");
         } else {
-          ledRojo();
+          mostrarResultadoLed(false);  // usa el hold de 1 segundo que ya existe, en rojo
           enviarFeedbackBLE("ERROR:Sensores auxiliares sin respuesta");
         }
       }
@@ -522,9 +708,11 @@ void Maq_General() {
     case MEDICIONES:
       recibirPaquetesUDP();
       if (flagMedicion) {
-        flagMedicion = false;
         mediciones();
-        evaluarRepeticion(*ejercicioActual);
+        recibirPaquetesUDP();
+        float v = leerAngulo(ejercicioActual->sensorPrincipal, ejercicioActual->ejePrincipal);
+        float velocidadActual = calcularVelocidad(v);
+        evaluarRepeticion(*ejercicioActual, velocidadActual);
       }
       actualizarLedMedicion(*ejercicioActual);
 
