@@ -1,4 +1,4 @@
-// ESP-01 (Auxiliar) - Comunicación UDP Corregida
+// ESP-01 (Auxiliar)
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include "Wire.h"
@@ -21,7 +21,7 @@ float offset_X, offset_Y, offset_Z;
 float inclX, inclY, inclZ;
 bool midiendo = false;
 unsigned long ultimoEnvioUDP = 0;
-const unsigned long INTERVALO_ENVIO_UDP = 50; // Envío a 20Hz
+const unsigned long INTERVALO_ENVIO_UDP = 50;  // Envío a 20Hz
 
 void calibrarOffset() {
   Serial.println("Calibrando offset auxiliar...");
@@ -47,7 +47,7 @@ void calibrarOffset() {
 bool leerInclinacion() {
   Wire.beginTransmission(0x68);
   if (Wire.endTransmission() != 0) {
-    Wire.begin(2, 0); // Reintento de reinicio I2C
+    Wire.begin(2, 0);  // Reintento de reinicio I2C
     return false;
   }
 
@@ -68,7 +68,7 @@ void setup() {
   delay(500);
   Serial.println("\n--- ESP-01 AUXILIAR INICIANDO ---");
 
-  Wire.begin(2, 0); // GPIO0 = SDA, GPIO2 = SCL
+  Wire.begin(2, 0);  // GPIO0 = SDA, GPIO2 = SCL
   sensor.initialize();
 
   WiFi.mode(WIFI_STA);
@@ -107,7 +107,7 @@ void loop() {
 
   int packetSize = udp.parsePacket();
   if (packetSize > 0) {
-    char packetBuffer[32] = {0};
+    char packetBuffer[32] = { 0 };
     udp.read(packetBuffer, sizeof(packetBuffer) - 1);
     String comando = String(packetBuffer);
     comando.trim();
@@ -130,6 +130,7 @@ void loop() {
     } else {
       String msg = String(inclX, 2) + "," + String(inclY, 2) + "," + String(inclZ, 2);
       udp.print(msg);
+      Serial.println("Enviando: " + msg);
     }
     udp.endPacket();
   }

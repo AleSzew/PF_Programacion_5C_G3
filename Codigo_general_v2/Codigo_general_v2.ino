@@ -44,6 +44,9 @@ Ticker timerAntirrebote;
 Ticker timerMedicion;
 
 int contadorErrores = 0;
+int contadorBien = 0;
+bool primeraRepHecha = false;  // se resetea al arrancar cada serie
+
 bool flagMedicion = false;
 int INTERVALO_MEDICION = 100;
 
@@ -76,6 +79,13 @@ String resultadoValidacion = "";
 int segundosBoton = 0;
 bool feedbackEnviado = false;
 int codigo = 1;
+// ============================================================
+// INTERRUPTOR TEMPORAL: mientras esto este en false, el sistema
+// NUNCA bloquea el inicio esperando a los auxiliares -- intenta
+// avisarles, pero sigue de largo haya o no respuesta. Poner en
+// true cuando los auxiliares sean obligatorios de nuevo.
+// ============================================================
+bool REQUERIR_AUXILIARES = false;
 
 #define PIN_BOTON 1
 #define PIN_LED_R 9
@@ -244,10 +254,8 @@ bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
 
   Serial.println("Enviando orden INICIAR por UDP a los auxiliares requeridos...");
 
-  // Handshake con reintentos durante un máximo de 2.5 segundos
   unsigned long inicioHandshake = millis();
   while (millis() - inicioHandshake < 2500) {
-    // Manda 3 veces seguidas en vez de una, para compensar perdida de paquetes UDP
     for (int i = 0; i < 3; i++) {
       enviarComandoUDPAuxiliares("INICIAR", ej);
       delay(20);
@@ -266,12 +274,21 @@ bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
       return true;
     }
   }
+
   Serial.println(" Timeout UDP: Un auxiliar requerido no respondio.");
   if (necesitaAux1 && !aux1_ok) Serial.println(" -> Auxiliar 1 sin señal");
   if (necesitaAux2 && !aux2_ok) Serial.println(" -> Auxiliar 2 sin señal");
 
+  // Con REQUERIR_AUXILIARES en false, seguimos de largo igual:
+  // la medicion arranca sin bloquear, usando lo que haya disponible.
+  if (!REQUERIR_AUXILIARES) {
+    Serial.println(" (REQUERIR_AUXILIARES=false, arrancando de todas formas)");
+    return true;
+  }
+
   return false;
 }
+
 
 enum FaseRep { REPOSO,
                EN_MOVIMIENTO };
@@ -283,9 +300,9 @@ enum SubFaseRep { SUBIENDO,
 SubFaseRep subFaseRep = SUBIENDO;
 const float MARGEN_SUBFASE = 0.05;
 
-float baseLocal = 0;           // "cero" adaptativo del ejercicio actual
-float amplitudObjetivo = 1.0;  // amplitud esperada, segun calibracion
-int direccionMovimiento = 1;   // +1 si el pico esta por encima del reposo, -1 si no
+float baseLocal = 0;
+float amplitudObjetivo = 1.0;
+int direccionMovimiento = 1;
 float picoAlcanzado = 0;
 
 const float ALPHA_BASE_REPOSO = 0.02;
@@ -297,8 +314,8 @@ const float UMBRAL_RETORNO = 0.25;
 const int MUESTRAS_CONFIRMACION = 3;
 
 unsigned long duracionCalibrada = 1500;
-const float FACTOR_DURACION_MIN = 0.4;
-const float FACTOR_DURACION_MAX = 2.2;
+const float FACTOR_DURACION_MIN = 0.5;
+const float FACTOR_DURACION_MAX = 3.0;
 const unsigned long T_MIN = 200;
 const unsigned long T_MAX = 5000;
 
@@ -308,9 +325,6 @@ int contadorErrorVelocidad = 0;
 float progreso(float v) {
   return direccionMovimiento * (v - baseLocal) / amplitudObjetivo;
 }
-
-
-
 
 void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   Serial.print("Calibrando movimiento para: ");
@@ -373,12 +387,9 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       if (d > lateralMax[p]) lateralMax[p] = d;
     }
 
-    if (!salioDeReposo && amplitudMax > AMPLITUD_MINIMA_CALIB) {
-      salioDeReposo = true;
-      tInicioMovCalib = millis();
-    }
+    const unsigned long TIEMPO_MINIMO_MOVIMIENTO_CALIB = 400;  // ms, evita cortar por un temblor inicial
 
-    if (salioDeReposo) {
+    if (salioDeReposo && (millis() - tInicioMovCalib) >= TIEMPO_MINIMO_MOVIMIENTO_CALIB) {
       float progresoCalib = distancia / amplitudMax;
       if (progresoCalib <= FRACCION_RETORNO_CALIB) {
         contadorRetornoCalib++;
@@ -443,23 +454,33 @@ void actualizarLedMedicion(Ejercicio& ej) {
     if (millis() - tHoldLed >= DURACION_HOLD_LED) ledEnHold = false;
     else return;
   }
-  if (faseRep == REPOSO) ledAmarillo();
-  else ledVerde();
+  if (faseRep == REPOSO) {
+    // Antes de la primera repeticion: verde (igual que mientras se mide).
+    // Despues de la primera: amarillo, esperando la siguiente.
+    if (primeraRepHecha) ledAmarillo();
+    else ledVerde();
+  } else {
+    ledVerde();  // en movimiento, siempre verde
+  }
 }
-
 bool posturaOK(Ejercicio& ej) {
   for (int i = 0; i < 2; i++) {
     uint8_t s = ej.sensorPostura[i];
     if (s == 99) continue;
-    if (s == 1 && !aux1_ok) return false;
-    if (s == 2 && !aux2_ok) return false;
+
+    bool sensorCaido = (s == 1 && !aux1_ok) || (s == 2 && !aux2_ok);
+    if (sensorCaido) {
+      // Si los auxiliares no son obligatorios ahora mismo, un sensor de
+      // postura caido simplemente no se evalua (no cuenta como error).
+      if (!REQUERIR_AUXILIARES) continue;
+      return false;
+    }
 
     float vp = leerAngulo(s, ej.ejePostura[i]);
     if (abs(vp - ej.centroPostura[i]) > ej.toleranciaPostura[i]) return false;
   }
   return true;
 }
-
 // Devuelve false si el sensor principal del ejercicio es un auxiliar
 // y ese auxiliar esta desconectado -- evita evaluar contra datos viejos.
 bool sensorPrincipalOK(Ejercicio& ej) {
@@ -477,8 +498,11 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
       faseRep = REPOSO;
       contadorErrorVelocidad = 0;
       contadorRetorno = 0;
-      enviarFeedbackBLE("REP:" + resultadoValidacion);
+      primeraRepHecha = true;
       mostrarResultadoLed(false);
+
+      String msgContador = "CONTADOR:BIEN=" + String(contadorBien) + ",MAL=" + String(contadorErrores);
+      enviarFeedbackBLE(msgContador);
     }
     return;
   }
@@ -566,10 +590,15 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
   if (resultado != "") {
     resultadoValidacion = resultado;
     Serial.println("Resultado Repeticion: " + resultadoValidacion);
-    enviarFeedbackBLE("REP:" + resultado);
     mostrarResultadoLed(resultado == "BIEN");
     contadorErrorVelocidad = 0;
-    if (resultado != "BIEN") contadorErrores++;
+    primeraRepHecha = true;
+    if (resultado == "BIEN") contadorBien++;
+    else contadorErrores++;
+
+    // En vez de mandar el detalle del error, se manda solo el conteo acumulado
+    String msgContador = "CONTADOR:BIEN=" + String(contadorBien) + ",MAL=" + String(contadorErrores);
+    enviarFeedbackBLE(msgContador);
   }
 }
 
@@ -692,9 +721,10 @@ void Maq_General() {
           faseRep = REPOSO;
           contadorErrores = 0;
           contadorErrorVelocidad = 0;
-          contadorRetorno = 0;    // <-- AGREGAR
-          subFaseRep = SUBIENDO;  // <-- AGREGAR
-          estadoMaq_General = MEDICIONES;
+          primeraRepHecha = false;
+          contadorBien = 0;
+          contadorRetorno = 0;
+          subFaseRep = SUBIENDO;
           estadoMaq_General = MEDICIONES;
           enviarFeedbackBLE("ESTADO:MEDICION_INICIADA");
           Serial.println(">>> ESTADO ACTUAL: MEDICIONES <<<");
@@ -710,6 +740,7 @@ void Maq_General() {
       if (flagMedicion) {
         mediciones();
         recibirPaquetesUDP();
+        flagMedicion = false;
         float v = leerAngulo(ejercicioActual->sensorPrincipal, ejercicioActual->ejePrincipal);
         float velocidadActual = calcularVelocidad(v);
         evaluarRepeticion(*ejercicioActual, velocidadActual);
@@ -724,7 +755,7 @@ void Maq_General() {
       break;
 
     case ANALISIS_SERIE:
-      resultadoValidacion = "SERIE TERMINADA: " + String(contadorErrores) + " errores";
+      resultadoValidacion = "SERIE TERMINADA: " + String(contadorBien) + " bien, " + String(contadorErrores) + " mal";
       Serial.println(resultadoValidacion);
       segundosBoton = 0;
       flagBoton = false;
