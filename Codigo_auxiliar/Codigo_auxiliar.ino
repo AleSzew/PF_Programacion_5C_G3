@@ -68,7 +68,7 @@ void setup() {
   delay(500);
   Serial.println("\n--- ESP-01 AUXILIAR INICIANDO ---");
 
-  Wire.begin(2, 0);  // GPIO0 = SDA, GPIO2 = SCL
+  Wire.begin(0, 2);  // GPIO0 = SDA, GPIO2 = SCL
   sensor.initialize();
 
   WiFi.mode(WIFI_STA);
