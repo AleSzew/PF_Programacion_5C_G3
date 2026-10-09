@@ -37,15 +37,19 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     // Si volvemos a esta pantalla y ya estábamos conectados...
     if (yaEstaConectado && caracteristicaGlobal != null) {
       status = "Conectado";
-      feedback = "Conexión mantenida con el ESP32";
+      feedback = "Conexión activa con el ESP32";
       
-      // CRUCIAL: Volvemos a escuchar los mensajes del ESP32 al entrar a la pantalla
       _listenToCharacteristic();
 
-      // Mandamos el comando del ejercicio si hay uno listo
+      // Mandamos el comando del ejercicio si hay uno listo con breve espera
       if (ejercicioSeleccionadoId.isNotEmpty) {
-        _sendCommand(ejercicioSeleccionadoId);
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) _sendCommand(ejercicioSeleccionadoId);
+        });
       }
+    } else {
+      // Inicia el escaneo automáticamente al entrar a la pantalla
+      _startScan();
     }
   }
 
@@ -53,17 +57,15 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
   void dispose() {
     scanSub?.cancel();
     notifySub?.cancel(); // Dejamos de actualizar la pantalla para no causar crasheos
-    // IMPORTANTE: NO cancelamos 'connSubGlobal' para que el iPhone no corte el Bluetooth
     super.dispose();
   }
 
-  // Separé la escucha en una función para poder llamarla desde initState y connectToDevice
   void _listenToCharacteristic() {
     notifySub?.cancel();
     notifySub = flutterReactiveBleGlobal
         .subscribeToCharacteristic(caracteristicaGlobal!)
         .listen((data) {
-      if (!mounted) return; // SEGURO ANTI-CRASHEOS: Si la pantalla ya se cerró, ignora el mensaje
+      if (!mounted) return;
       
       final message = String.fromCharCodes(data);
       setState(() {
@@ -83,7 +85,7 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     devices = [];
     setState(() {
       status = "Escaneando BLE";
-      feedback = "Buscando dispositivos...";
+      feedback = "Buscando Techeck_V2...";
     });
 
     scanSub = flutterReactiveBleGlobal.scanForDevices(withServices: []).listen(
@@ -93,6 +95,11 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
           setState(() {
             devices.add(device);
           });
+
+          // Conexión automática si detecta el dispositivo Techeck
+          if (device.name == "Techeck_V2" || device.name.contains("Techeck")) {
+            _connectToDevice(device);
+          }
         }
       },
       onError: (error) {
@@ -109,18 +116,12 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     scanSub?.cancel();
     setState(() {
       status = "Conectando a ${device.name.isEmpty ? device.id : device.name}";
-      feedback = "Intentando conectar...";
+      feedback = "Estableciendo conexión BLE...";
     });
 
-    connSubGlobal?.cancel(); // Corta cualquier intento de conexión anterior
+    connSubGlobal?.cancel();
     connSubGlobal = flutterReactiveBleGlobal.connectToDevice(id: device.id).listen(
       (update) async { 
-        if (!mounted) return; // Seguro anti-crasheos
-        
-        setState(() {
-          status = "Estado: ${update.connectionState}";
-        });
-
         if (update.connectionState == DeviceConnectionState.connected) {
           yaEstaConectado = true;
           
@@ -130,31 +131,59 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
             characteristicId: charUuid,
           );
 
-          // Iniciamos la escucha de los mensajes del ESP32
-          _listenToCharacteristic();
+          if (mounted) {
+            setState(() {
+              status = "Conectado";
+            });
+            _listenToCharacteristic();
+          }
 
-          // Si hay un ejercicio, lo mandamos
-          if (ejercicioSeleccionadoId.isNotEmpty) {
+          // Espera 500 ms para que el servicio GATT se estabilice antes de enviar
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          if (ejercicioSeleccionadoId.isNotEmpty && mounted) {
             _sendCommand(ejercicioSeleccionadoId);
           }
 
         } else if (update.connectionState == DeviceConnectionState.disconnected) {
           yaEstaConectado = false;
-          if (!mounted) return;
-          setState(() {
-            status = "Desconectado";
-            feedback = "Se perdió la conexión con el ESP32";
-          });
+          caracteristicaGlobal = null;
+          if (mounted) {
+            setState(() {
+              status = "Desconectado";
+              feedback = "Se perdió la conexión con el ESP32";
+            });
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              status = "Estado: ${update.connectionState}";
+            });
+          }
         }
       },
       onError: (error) {
-        if (!mounted) return;
-        setState(() {
-          status = "Error conexión";
-          feedback = "No se pudo conectar";
-        });
+        yaEstaConectado = false;
+        caracteristicaGlobal = null;
+        if (mounted) {
+          setState(() {
+            status = "Error conexión";
+            feedback = "No se pudo conectar";
+          });
+        }
       },
     );
+  }
+
+  void _disconnect() {
+    connSubGlobal?.cancel();
+    notifySub?.cancel();
+    setState(() {
+      yaEstaConectado = false;
+      caracteristicaGlobal = null;
+      status = "Desconectado";
+      feedback = "Dispositivo desconectado";
+    });
   }
 
   Future<void> _sendCommand(String command) async {
@@ -188,63 +217,124 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     return Scaffold(
       appBar: AppBar(title: const Text('Techeck BLE')),
       body: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Text("Estado: $status"),
-            const SizedBox(height: 10),
-            Card(
-              color: yaEstaConectado ? Colors.green.shade100 : Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(
-                  feedback, 
-                  style: TextStyle(
-                    fontSize: 16, 
-                    fontWeight: yaEstaConectado ? FontWeight.bold : FontWeight.normal
+            Text(
+              "Estado: $status",
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+
+            // CUANDO ESTÁ CONECTADO: Se ocultan los dispositivos y se muestra el feedback en grande
+            if (yaEstaConectado) ...[
+              Expanded(
+                child: Center(
+                  child: Card(
+                    color: const Color(0xFF1E2A38),
+                    elevation: 6,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.bluetooth_connected,
+                            color: Color(0xFFD4AF37),
+                            size: 50,
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            "Feedback del ESP32",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFD4AF37),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            feedback,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                ElevatedButton(onPressed: _startScan, child: const Text("Escanear")),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: () {
-                    scanSub?.cancel();
-                    setState(() {
-                      status = "Escaneo detenido";
-                      feedback = "Puedes volver a escanear";
-                    });
-                  },
-                  child: const Text("Detener"),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _disconnect,
+                icon: const Icon(Icons.bluetooth_disabled),
+                label: const Text("Desconectar"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: devices.isEmpty
-                  ? const Center(child: Text("No hay dispositivos BLE"))
-                  : ListView.builder(
-                      itemCount: devices.length,
-                      itemBuilder: (context, index) {
-                        final device = devices[index];
-                        final name = device.name.isEmpty ? "Sin nombre" : device.name;
-                        return Card(
-                          child: ListTile(
-                            title: Text(name),
-                            subtitle: Text(device.id),
-                            trailing: ElevatedButton(
-                              onPressed: () => _connectToDevice(device),
-                              child: const Text("Conectar"),
+              ),
+            ] else ...[
+              // CUANDO NO ESTÁ CONECTADO: Muestra la búsqueda y lista de dispositivos
+              Card(
+                color: const Color(0xFF1E2A38),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    feedback,
+                    style: const TextStyle(fontSize: 15, color: Colors.white),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  ElevatedButton(onPressed: _startScan, child: const Text("Escanear")),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () {
+                      scanSub?.cancel();
+                      setState(() {
+                        status = "Escaneo detenido";
+                        feedback = "Puedes volver a escanear";
+                      });
+                    },
+                    child: const Text("Detener"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: devices.isEmpty
+                    ? const Center(child: Text("Buscando dispositivos BLE..."))
+                    : ListView.builder(
+                        itemCount: devices.length,
+                        itemBuilder: (context, index) {
+                          final device = devices[index];
+                          final name = device.name.isEmpty ? "Sin nombre" : device.name;
+                          return Card(
+                            child: ListTile(
+                              title: Text(name),
+                              subtitle: Text(device.id),
+                              trailing: ElevatedButton(
+                                onPressed: () => _connectToDevice(device),
+                                child: const Text("Conectar"),
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           ],
         ),
       ),

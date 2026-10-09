@@ -141,10 +141,12 @@ class _RutinasState extends State<Rutinas> {
                             const SizedBox(width: 8),
 
                             // Botón "Hacer" - Texto centrado y escalado
+                                                        // Botón "Hacer" - Guarda el ID del ejercicio y va a la pantalla BLE
                             Expanded(
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
                                 onPressed: () {
+                                  ejercicioSeleccionadoId = ejercicio['id'] ?? '';
                                   context.push('/pantallabluetooth');
                                 },
                                 child: const FittedBox(
