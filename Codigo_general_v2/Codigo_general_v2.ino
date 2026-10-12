@@ -87,27 +87,27 @@ int codigo = 1;
 // ============================================================
 bool REQUERIR_AUXILIARES = false;
 
-#define PIN_BOTON 1
+#define PIN_BOTON 41
 #define PIN_LED_R 9
-#define PIN_LED_G 20
-#define PIN_LED_B 10
+#define PIN_LED_G 10
+
 
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3XX";
 
-void setLED(bool r, bool g, bool b) {
+void setLED(bool r, bool g) {
   digitalWrite(PIN_LED_R, r ? HIGH : LOW);
   digitalWrite(PIN_LED_G, g ? HIGH : LOW);
-  digitalWrite(PIN_LED_B, b ? HIGH : LOW);
+
 }
 void ledRojo() {
-  setLED(1, 0, 0);
+  setLED(1, 0);
 }
 void ledVerde() {
-  setLED(0, 1, 0);
+  setLED(0, 1);
 }
 void ledAmarillo() {
-  setLED(1, 1, 0);
+  setLED(1, 1);
 }
 
 unsigned long tHoldLed = 0;
@@ -781,19 +781,27 @@ void Maq_General() {
 
 void setup() {
   Serial.begin(115200);
+  unsigned long t = millis();
+  while (!Serial && millis() - t < 5000) delay(10);
+  Serial.println("ARRANQUE");
   delay(500);
   Serial.println("\n==================================");
   Serial.println("  INICIANDO ESP32-C3 PRINCIPAL   ");
   Serial.println("==================================");
 
+  Serial.println("A: antes de Wire");
+  Serial.flush();
   Wire.begin(6, 7);
+  Serial.println("B: Wire OK");
+  Serial.flush();
   sensor.initialize();
-
+  Serial.println("C: sensor OK");
+  Serial.flush();
   pinMode(PIN_BOTON, INPUT_PULLUP);
   pinMode(PIN_LED_R, OUTPUT);
   pinMode(PIN_LED_G, OUTPUT);
-  pinMode(PIN_LED_B, OUTPUT);
 
+  Serial.println("D: pines OK"); Serial.flush();
   WiFi.mode(WIFI_AP);
   bool apOk = WiFi.softAP(ssid, password);
   Serial.print("Access Point creado: ");
@@ -802,13 +810,16 @@ void setup() {
   Serial.println(WiFi.softAPIP());
 
   udp.begin(PuertoUDP);
-  inicializarBLE();
-  calibrarOffsetGlobal();
+  Serial.println("E: WiFi OK"); Serial.flush();
 
+  inicializarBLE();
+  Serial.println("F: BLE OK"); Serial.flush();
+  calibrarOffsetGlobal();
+  Serial.println("G: calibracion OK"); Serial.flush();
   timerBoton.attach(1, funcionTimerBoton);
   timerAntirrebote.attach_ms(1, funcionTimerAntirrebote);
   timerMedicion.attach_ms(INTERVALO_MEDICION, funcionTimerMedicion);
-
+  Serial.println("H: timers OK"); Serial.flush();
   Serial.println("SISTEMA LISTO EN ESTADO INICIALIZACION.");
 }
 

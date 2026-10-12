@@ -21,6 +21,7 @@ void setup() {
 }
 
 void loop() {
+  Serial.println("hola");
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     http.begin(serverName);
