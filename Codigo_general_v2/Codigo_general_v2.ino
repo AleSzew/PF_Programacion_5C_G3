@@ -62,6 +62,7 @@ typedef enum { ESPERA,
 estadoAntirrebote_t estadoBoton = ESPERA;
 int msBoton = 0;
 bool flagBoton = false;
+
 #define T_REBOTE 10
 
 int16_t ax_local, ay_local, az_local;
@@ -87,9 +88,9 @@ int codigo = 1;
 // ============================================================
 bool REQUERIR_AUXILIARES = false;
 
-#define PIN_BOTON 41
-#define PIN_LED_R 9
-#define PIN_LED_G 10
+#define PIN_BOTON 5
+#define PIN_LED_R 4   
+#define PIN_LED_G 2
 
 
 const char* ssid = "ESP32_C3_Server";
@@ -780,7 +781,7 @@ void Maq_General() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   unsigned long t = millis();
   while (!Serial && millis() - t < 5000) delay(10);
   Serial.println("ARRANQUE");
@@ -791,13 +792,13 @@ void setup() {
 
   Serial.println("A: antes de Wire");
   Serial.flush();
-  Wire.begin(6, 7);
+  Wire.begin(44, 1);
   Serial.println("B: Wire OK");
   Serial.flush();
   sensor.initialize();
   Serial.println("C: sensor OK");
   Serial.flush();
-  pinMode(PIN_BOTON, INPUT_PULLUP);
+  pinMode(PIN_BOTON, INPUT);
   pinMode(PIN_LED_R, OUTPUT);
   pinMode(PIN_LED_G, OUTPUT);
 
