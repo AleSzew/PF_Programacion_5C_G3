@@ -1,4 +1,4 @@
-// ESP32-C3 (Principal) - UDP + BLE + Control de Estados Corregido
+// ESP32 (Principal) - UDP + BLE + Control de Estados Corregido
 #include <MPU6050.h>
 #include "Wire.h"
 #include "WiFi.h"
@@ -778,7 +778,7 @@ void setup() {
   Serial.println("ARRANQUE");
   delay(500);
   Serial.println("\n==================================");
-  Serial.println("  INICIANDO ESP32-C3 PRINCIPAL   ");
+  Serial.println("  INICIANDO ESP32 PRINCIPAL      ");
   Serial.println("==================================");
 
   Serial.println("A: antes de Wire");
@@ -796,8 +796,19 @@ void setup() {
   pinMode(PIN_LED_G, OUTPUT);
 
   Serial.println("D: pines OK"); Serial.flush();
+
+  // ============================================================
+  // CONFIGURACIÓN ROBUSTA DEL ACCESS POINT (WIFI AP)
+  // ============================================================
   WiFi.mode(WIFI_AP);
-  bool apOk = WiFi.softAP(ssid, password);
+  IPAddress local_ip(192, 168, 4, 1);
+  IPAddress gateway(192, 168, 4, 1);
+  IPAddress subnet(255, 255, 255, 0);
+
+  WiFi.softAPConfig(local_ip, gateway, subnet);
+  // Canal 1 fijo, visible, máximo 4 clientes simultáneos
+  bool apOk = WiFi.softAP(ssid, password, 1, 0, 4); 
+
   Serial.print("Access Point creado: ");
   Serial.println(apOk ? "SI" : "NO");
   Serial.print("IP del AP: ");
