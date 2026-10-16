@@ -1,4 +1,6 @@
+
 // ESP32 (Principal) - UDP + BLE + Control de Estados Corregido
+#include "esp_sleep.h"
 #include <MPU6050.h>
 #include "Wire.h"
 #include "WiFi.h"
@@ -84,13 +86,13 @@ int codigo = 1;
 bool REQUERIR_AUXILIARES = false;
 
 #define PIN_BOTON 5
-#define PIN_LED_R 4   
+#define PIN_LED_R 4
 #define PIN_LED_G 2
 
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3XX";
 
-void maquinaAntirrebote(); // Declaración previa para llamadas dentro de bucles
+void maquinaAntirrebote();  // Declaración previa para llamadas dentro de bucles
 
 void setLED(bool r, bool g) {
   digitalWrite(PIN_LED_R, r ? HIGH : LOW);
@@ -347,8 +349,8 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   Serial.println("Ahora hace UNA repeticion completa, lenta y CORRECTA...");
   Serial.println("(la calibracion termina sola cuando volves a la posicion inicial)");
 
-  const float UMBRAL_SALIDA_CALIB = 5.0;     // Grados para considerar inicio del movimiento
-  const float AMPLITUD_MINIMA_CALIB = 8.0;   // Amplitud mínima exigida
+  const float UMBRAL_SALIDA_CALIB = 5.0;      // Grados para considerar inicio del movimiento
+  const float AMPLITUD_MINIMA_CALIB = 8.0;    // Amplitud mínima exigida
   const float TOLERANCIA_RETORNO_DEG = 6.0;   // Tolerancia en grados para volver al origen
   const float FRACCION_RETORNO_CALIB = 0.25;  // Retorno al 25% del máximo
   const int MUESTRAS_CONFIRM_CALIB = 3;
@@ -389,8 +391,7 @@ void calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
 
     // Detección de retorno a la posición inicial (después de al menos 200ms)
     if (salioDeReposo && (millis() - tInicioMovCalib) >= 200) {
-      bool enPosicionInicial = (distancia <= TOLERANCIA_RETORNO_DEG) || 
-                               (amplitudMax > 0 && (distancia / amplitudMax) <= FRACCION_RETORNO_CALIB);
+      bool enPosicionInicial = (distancia <= TOLERANCIA_RETORNO_DEG) || (amplitudMax > 0 && (distancia / amplitudMax) <= FRACCION_RETORNO_CALIB);
 
       if (enPosicionInicial) {
         contadorRetornoCalib++;
@@ -772,6 +773,31 @@ void Maq_General() {
 }
 
 void setup() {
+  pinMode(PIN_BOTON, INPUT_PULLUP);
+
+  // 1. Cuenta si mantienes el botón presionado durante 3 segundos
+  unsigned long tBoton = millis();
+  while (digitalRead(PIN_BOTON) == LOW) {
+    if (millis() - tBoton >= 3000) break;  // Cumplió los 3 segundos -> continúa
+    delay(10);
+  }
+
+  // 2. Si pasaron menos de 3 segundos (lo soltaste o se acaba de enchufar) -> Deep Sleep
+  if (millis() - tBoton < 3000) {
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_BOTON, ESP_GPIO_WAKEUP_GPIO_LOW);
+#else
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BOTON, 0);
+#endif
+    esp_deep_sleep_start();
+  }
+
+  // 3. Si llegó acá, es porque lo mantuviste 3 segundos: prende LED verde y arranca
+  pinMode(PIN_LED_G, OUTPUT);
+  digitalWrite(PIN_LED_G, HIGH);
+  delay(500);
+  digitalWrite(PIN_LED_G, LOW);
+
   Serial.begin(115200);
   unsigned long t = millis();
   while (!Serial && millis() - t < 5000) delay(10);
@@ -795,7 +821,8 @@ void setup() {
   pinMode(PIN_LED_R, OUTPUT);
   pinMode(PIN_LED_G, OUTPUT);
 
-  Serial.println("D: pines OK"); Serial.flush();
+  Serial.println("D: pines OK");
+  Serial.flush();
 
   // ============================================================
   // CONFIGURACIÓN ROBUSTA DEL ACCESS POINT (WIFI AP)
@@ -807,7 +834,7 @@ void setup() {
 
   WiFi.softAPConfig(local_ip, gateway, subnet);
   // Canal 1 fijo, visible, máximo 4 clientes simultáneos
-  bool apOk = WiFi.softAP(ssid, password, 1, 0, 4); 
+  bool apOk = WiFi.softAP(ssid, password, 1, 0, 4);
 
   Serial.print("Access Point creado: ");
   Serial.println(apOk ? "SI" : "NO");
@@ -815,16 +842,20 @@ void setup() {
   Serial.println(WiFi.softAPIP());
 
   udp.begin(PuertoUDP);
-  Serial.println("E: WiFi OK"); Serial.flush();
+  Serial.println("E: WiFi OK");
+  Serial.flush();
 
   inicializarBLE();
-  Serial.println("F: BLE OK"); Serial.flush();
+  Serial.println("F: BLE OK");
+  Serial.flush();
   calibrarOffsetGlobal();
-  Serial.println("G: calibracion OK"); Serial.flush();
+  Serial.println("G: calibracion OK");
+  Serial.flush();
   timerBoton.attach(1, funcionTimerBoton);
   timerAntirrebote.attach_ms(1, funcionTimerAntirrebote);
   timerMedicion.attach_ms(INTERVALO_MEDICION, funcionTimerMedicion);
-  Serial.println("H: timers OK"); Serial.flush();
+  Serial.println("H: timers OK");
+  Serial.flush();
   Serial.println("SISTEMA LISTO EN ESTADO INICIALIZACION.");
 }
 
