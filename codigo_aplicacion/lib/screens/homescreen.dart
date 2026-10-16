@@ -33,6 +33,11 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text("Inicio"),
               onTap: () => context.push('/homescreen'),
             ),
+                        ListTile(
+              leading: const Icon(Icons.lightbulb),
+              title: const Text("Guía de LEDs"),
+              onTap: () => context.push('/manual_leds'),
+            ),
             ListTile(
               leading: const Icon(Icons.fitness_center),
               title: const Text("Rutinas"),

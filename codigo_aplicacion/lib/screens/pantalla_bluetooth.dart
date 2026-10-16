@@ -3,6 +3,7 @@ import 'package:codigo_aplicacion/carrito_ejercicios.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:go_router/go_router.dart';
 
 // ---------------------------------------------------------
 // VARIABLES GLOBALES (Mantienen la conexión viva en iOS/Android)
@@ -215,7 +216,16 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Techeck BLE')),
+           appBar: AppBar(
+        title: const Text('Techeck BLE'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'Guía de LEDs',
+            onPressed: () => context.push('/manual_leds'),
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

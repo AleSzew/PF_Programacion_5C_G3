@@ -6,7 +6,7 @@ import 'package:codigo_aplicacion/screens/homescreen.dart';
 import 'package:codigo_aplicacion/screens/rutinas.dart';
 import 'package:codigo_aplicacion/screens/estadisticas.dart';
 import 'package:codigo_aplicacion/screens/ejercicios.dart';
-
+import 'package:codigo_aplicacion/screens/manual_leds.dart';
 
 
 final appRouter = GoRouter(
@@ -35,6 +35,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/infousers',
       builder: (context, state) => const Infousers(),
+    ),
+        GoRoute(
+      path: '/manual_leds',
+      builder: (context, state) => const ManualLeds(),
     ),
      GoRoute(
       path: '/pantallabluetooth',
