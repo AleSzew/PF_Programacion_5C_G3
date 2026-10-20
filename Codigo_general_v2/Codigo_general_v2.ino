@@ -1,6 +1,7 @@
 
 // ESP32 (Principal) - UDP + BLE + Control de Estados Corregido
 #include "esp_sleep.h"
+#include "driver/rtc_io.h"
 #include <MPU6050.h>
 #include "Wire.h"
 #include "WiFi.h"
@@ -772,35 +773,57 @@ void Maq_General() {
   }
 }
 
+// Duerme la placa hasta que se apriete el boton.
+void irADormir() {
+  delay(50);  // deja asentar el rebote antes de dormir
+
+  // El pull-up interno se apaga durante el deep sleep: hay que mantenerlo
+  // en el dominio RTC, si no el pin flota y la placa despierta sola.
+  rtc_gpio_pullup_en((gpio_num_t)PIN_BOTON);
+  rtc_gpio_pulldown_dis((gpio_num_t)PIN_BOTON);
+
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+  esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_BOTON, ESP_GPIO_WAKEUP_GPIO_LOW);
+#else
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BOTON, 0);  // despierta con el pin en LOW
+#endif
+  esp_deep_sleep_start();
+}
+
 void setup() {
   pinMode(PIN_BOTON, INPUT_PULLUP);
+  pinMode(PIN_LED_G, OUTPUT);
+  delay(50);  // deja estabilizar el pull-up antes de leer el boton
 
-  // 1. Cuenta si mantienes el botón presionado durante 3 segundos
-  unsigned long tBoton = millis();
+  // Encendido con pulsacion larga: hay que mantener el boton 3 s
+  const unsigned long TIEMPO_ENCENDIDO_MS = 3000;
+  unsigned long tInicio = millis();
+  bool encendido = false;
+
   while (digitalRead(PIN_BOTON) == LOW) {
-    if (millis() - tBoton >= 3000) break;  // Cumplió los 3 segundos -> continúa
+    unsigned long transcurrido = millis() - tInicio;
+    digitalWrite(PIN_LED_G, (transcurrido / 250) % 2);  // parpadea mientras cuenta
+    if (transcurrido >= TIEMPO_ENCENDIDO_MS) {
+      encendido = true;
+      break;
+    }
     delay(10);
   }
-
-  // 2. Si pasaron menos de 3 segundos (lo soltaste o se acaba de enchufar) -> Deep Sleep
-  if (millis() - tBoton < 3000) {
-#if defined(CONFIG_IDF_TARGET_ESP32C3)
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_BOTON, ESP_GPIO_WAKEUP_GPIO_LOW);
-#else
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BOTON, 0);
-#endif
-    esp_deep_sleep_start();
-  }
-
-  // 3. Si llegó acá, es porque lo mantuviste 3 segundos: prende LED verde y arranca
-  pinMode(PIN_LED_G, OUTPUT);
-  digitalWrite(PIN_LED_G, HIGH);
-  delay(500);
   digitalWrite(PIN_LED_G, LOW);
+
+  if (!encendido) irADormir();
+
+  // Se mantuvo 3 s: LED verde fijo hasta que lo suelte. Es importante esperar,
+  // porque si no, esa misma pulsacion cuenta despues como "iniciar serie".
+  digitalWrite(PIN_LED_G, HIGH);
+  while (digitalRead(PIN_BOTON) == LOW) delay(10);
+  delay(50);
+  pinMode(PIN_LED_R, OUTPUT);
+  ledAmarillo();
 
   Serial.begin(115200);
   unsigned long t = millis();
-  while (!Serial && millis() - t < 5000) delay(10);
+  while (!Serial && millis() - t < 1500) delay(10);
   Serial.println("ARRANQUE");
   delay(500);
   Serial.println("\n==================================");
@@ -854,9 +877,12 @@ void setup() {
   timerBoton.attach(1, funcionTimerBoton);
   timerAntirrebote.attach_ms(1, funcionTimerAntirrebote);
   timerMedicion.attach_ms(INTERVALO_MEDICION, funcionTimerMedicion);
-  Serial.println("H: timers OK");
+  Serial.println("H: timers OK");}
+  
   Serial.flush();
   Serial.println("SISTEMA LISTO EN ESTADO INICIALIZACION.");
+  ledVerde();      // verde fijo = listo
+  flagBoton = false;
 }
 
 void loop() {
