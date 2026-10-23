@@ -10,7 +10,7 @@
 // Selecciona cuál auxiliar es este módulo:
 // Cambiar a '1' para Auxiliar 1 (IP Estática: 192.168.4.2)
 // Cambiar a '2' para Auxiliar 2 (IP Estática: 192.168.4.3)
-#define NUMERO_AUXILIAR 1  
+#define NUMERO_AUXILIAR 1
 
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3XX";
