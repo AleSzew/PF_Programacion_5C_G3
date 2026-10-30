@@ -135,10 +135,13 @@ float picoAlcanzado = 0;
 const float ALPHA_BASE_REPOSO = 0.02;
 const float TOLERANCIA_REPOSO_DEG = 4.0;
 const float TOLERANCIA_VEL_DPS = 15.0;
-const float UMBRAL_SALIDA = 0.25;   // la rep arranca al pasar el 25% del recorrido
+const float UMBRAL_SALIDA = 0.35;   // la rep arranca al pasar el 25% del recorrido
 const float UMBRAL_PICO = 0.60;     // para ser valida debe llegar al 60%
-const float UMBRAL_RETORNO = 0.12;  // termina al bajar del 12% (siempre MENOR que la salida)
-const int MUESTRAS_CONFIRMACION = 3;
+const float UMBRAL_RETORNO = 0.15;  // termina al bajar del 12% (siempre MENOR que la salida)
+const int MUESTRAS_CONFIRMACION = 6;
+
+unsigned long tFinUltimaRep = 0;
+const unsigned long T_MIN_ENTRE_REPS = 800;  // Milisegundos de espera obligatoria
 
 unsigned long duracionCalibrada = 1500;
 const float FACTOR_DURACION_MIN = 0.5;  // menos del 50% del tiempo calibrado = muy rapido
@@ -188,12 +191,41 @@ void enviarContadorBLE() {
 }
 
 // Orden: velocidad, postura s0, postura s1, postura s2, rango, rapido, lento, desconexion
+// ============================================================
+// BLE: ENVIO DE REPORTES CON TEXTO DETALLADO Y SUGERENCIAS
+// ============================================================
+// ============================================================
+// BLE: ENVIO DE REPORTES DIRECTOS SIN NUMEROS
+// ============================================================
 void enviarDetalleErroresBLE() {
-  char msg[40];
-  snprintf(msg, sizeof(msg), "DET:%d,%d,%d,%d,%d,%d,%d,%d",
-           errVelocidad, errPostura[0], errPostura[1], errPostura[2],
-           errRango, errRapido, errLento, errDesconexion);
-  enviarFeedbackBLE(String(msg));
+  String reporte = "";
+
+  if (errRapido > 0) {
+    reporte += "Muy rapido, baja el ritmo.\n";
+  }
+  if (errLento > 0) {
+    reporte += "Muy lento, prueba bajar el peso.\n";
+  }
+  if (errRango > 0) {
+    reporte += "Completa todo el recorrido.\n";
+  }
+  if (errVelocidad > 0) {
+    reporte += "Evita tirones bruscos.\n";
+  }
+  if (errPostura[0] > 0 || errPostura[1] > 0 || errPostura[2] > 0) {
+    reporte += "Cuidado con tu postura.\n";
+  }
+  if (errDesconexion > 0) {
+    reporte += "Sensor desconectado.\n";
+  }
+
+  // Si el texto sigue vacío, es porque no hubo ningún error
+  if (reporte == "") {
+    reporte = "Excelente, sigue asi";
+  }
+
+  // Envia el texto corto y directo a la app
+  enviarFeedbackBLE(reporte);
 }
 
 void imprimirDetalleErrores() {
@@ -504,7 +536,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   Serial.print("Calibrando movimiento para: ");
   Serial.println(ej.nombre);
   Serial.println("Mantene la posicion de reposo...");
-  enviarFeedbackBLE("CAL:QUIETO");
+  enviarFeedbackBLE("Quedate quieto en posicion inicial");
 
   // --- Paso 1: reposo del sensor principal y de los de postura (1 segundo) ---
   const int MUESTRAS_REPOSO = 20;
@@ -532,15 +564,15 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
 
   Serial.println("Ahora hace UNA repeticion completa, lenta y CORRECTA...");
   Serial.println("(la calibracion termina sola cuando volves a la posicion inicial)");
-  enviarFeedbackBLE("CAL:MOVER");
+  enviarFeedbackBLE("Hace 1 repeticion lenta para calibrar:");
 
   // --- Paso 2: seguir el movimiento hasta que vuelva solo ---
-  const float UMBRAL_SALIDA_CALIB = 5.0;     // grados para considerar que empezo el movimiento
-  const float AMPLITUD_MINIMA_CALIB = 8.0;   // amplitud minima para que cuente como repeticion
-  const float TOLERANCIA_RETORNO_DEG = 4.0;  // siempre MENOR que UMBRAL_SALIDA_CALIB
-  const float FRACCION_RETORNO_CALIB = 0.25;
-  const int MUESTRAS_CONFIRM_CALIB = 3;
-  const unsigned long TIEMPO_MINIMO_MOVIMIENTO_CALIB = 400;  // ms
+  const float UMBRAL_SALIDA_CALIB = 10.0;    // Antes 5.0. Exige salir claramente del reposo
+  const float AMPLITUD_MINIMA_CALIB = 25.0;  // Antes 8.0. Obliga a hacer un movimiento real y amplio
+  const float TOLERANCIA_RETORNO_DEG = 5.0;
+  const float FRACCION_RETORNO_CALIB = 0.20;
+  const int MUESTRAS_CONFIRM_CALIB = 5;                      // Antes 3. Asegura que realmente volvió al inicio
+  const unsigned long TIEMPO_MINIMO_MOVIMIENTO_CALIB = 800;  // Antes 400ms. Evita calibrar con tirones
 
   float minV = reposoValor, maxV = reposoValor;
   float amplitudMax = 0;
@@ -562,7 +594,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       salioDeReposo = true;
       tInicioMovCalib = millis();
       Serial.println("[CALIBRACION] Movimiento iniciado...");
-      enviarFeedbackBLE("CAL:EN_CURSO");
+      enviarFeedbackBLE("Grabando movimiento...");
     }
 
     if (v < minV) minV = v;
@@ -632,7 +664,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   Serial.print(duracionCalibrada);
   Serial.println(" ms");
 
-  enviarFeedbackBLE("CAL:OK");
+  enviarFeedbackBLE("Calibracion exitosa");
   return true;
 }
 
@@ -709,12 +741,12 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
 
   switch (faseRep) {
     case REPOSO:
-      // Quieto cerca del cero: el cero se ajusta solo
       if (fabs(v - baseLocal) < TOLERANCIA_REPOSO_DEG) {
         baseLocal = ALPHA_BASE_REPOSO * v + (1 - ALPHA_BASE_REPOSO) * baseLocal;
       }
 
-      if (p >= UMBRAL_SALIDA) {
+      // Solo permite iniciar una repetición si pasó el tiempo de bloqueo
+      if (p >= UMBRAL_SALIDA && (millis() - tFinUltimaRep > T_MIN_ENTRE_REPS)) {
         faseRep = EN_MOVIMIENTO;
         subFaseRep = SUBIENDO;
         tInicioRep = millis();
@@ -781,6 +813,7 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
             } else {
               resultado = "BIEN";
             }
+            tFinUltimaRep = millis();
           }
         } else {
           contadorRetorno = 0;
@@ -891,7 +924,7 @@ void Maq_General() {
             resetearSerie();
             tUltimoKeepalive = millis();
             estadoMaq_General = MEDICIONES;
-            enviarFeedbackBLE("ESTADO:MEDICION_INICIADA");
+            //enviarFeedbackBLE("A entrenar Contando repeticiones");
             Serial.println(">>> ESTADO ACTUAL: MEDICIONES <<<");
           } else {
             mostrarResultadoLed(false);
@@ -923,6 +956,17 @@ void Maq_General() {
         float v = leerAngulo(ejercicioActual->sensorPrincipal, ejercicioActual->ejePrincipal);
         float velocidadActual = calcularVelocidad(v);
         evaluarRepeticion(*ejercicioActual, velocidadActual);
+
+        // --- GRAFICADOR SERIAL ---
+        // Imprime los datos en formato compatible con Arduino Serial Plotter
+        Serial.print("Angulo:");
+        Serial.print(v);
+        Serial.print(",");
+        Serial.print("Base:");
+        Serial.print(baseLocal);
+        Serial.print(",");
+        Serial.print("Progreso_x100:");  // Multiplicado por 100 para verlo en la misma escala
+        Serial.println(progreso(v) * 100);
       }
       actualizarLedMedicion();
 
