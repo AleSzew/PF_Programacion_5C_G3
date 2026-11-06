@@ -31,7 +31,7 @@ struct Ejercicio {
 #define CANT_EJERCICIOS 5
 Ejercicio ejercicios[CANT_EJERCICIOS] = {
   { "Curl de biceps", 0, 1, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Triceps Nuca", 0, 1, 0, 0, { 99, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } } 
+  { "Triceps Nuca", 0, 1, 0, 0, { 99, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } }, 
   { "Press de Banca", 0, 2, 0, 0, { 1, 2 }, { 0, 2 }, { 0, 0 }, { 0, 0 } },
   { "Sentadilla", 0, 0, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
   { "Peso Muerto", 1, 0, 0, 0, { 0, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
@@ -377,7 +377,6 @@ void mediciones() {
   inclX_local = atan2(ax_ms2_local, sqrt(ay_ms2_local * ay_ms2_local + az_ms2_local * az_ms2_local)) * 180.0 / PI - offset_X;
   inclY_local = atan2(ay_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + az_ms2_local * az_ms2_local)) * 180.0 / PI - offset_Y;
   inclZ_local = atan2(az_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + ay_ms2_local * ay_ms2_local)) * 180.0 / PI - offset_Z;
-  Serial.printf("X:%.1f Y:%.1f Z:%.1f\n", inclX_local, inclY_local, inclZ_local);
 }
 
 float leerAngulo(uint8_t sensorId, uint8_t eje) {
