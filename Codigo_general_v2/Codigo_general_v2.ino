@@ -31,10 +31,10 @@ struct Ejercicio {
 #define CANT_EJERCICIOS 5
 Ejercicio ejercicios[CANT_EJERCICIOS] = {
   { "Curl de biceps", 0, 1, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Elevaciones Lat.", 0, 0, 0, 0, { 1, 99 }, { 1, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Press Militar", 0, 2, 0, 0, { 1, 2 }, { 0, 2 }, { 0, 0 }, { 0, 0 } },
+  { "Triceps Nuca", 0, 1, 0, 0, { 99, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } } 
+  { "Press de Banca", 0, 2, 0, 0, { 1, 2 }, { 0, 2 }, { 0, 0 }, { 0, 0 } },
   { "Sentadilla", 0, 0, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Peso Muerto", 1, 0, 0, 0, { 0, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } }
+  { "Peso Muerto", 1, 0, 0, 0, { 0, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
 };
 
 Ejercicio* ejercicioActual = &ejercicios[0];
@@ -377,6 +377,7 @@ void mediciones() {
   inclX_local = atan2(ax_ms2_local, sqrt(ay_ms2_local * ay_ms2_local + az_ms2_local * az_ms2_local)) * 180.0 / PI - offset_X;
   inclY_local = atan2(ay_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + az_ms2_local * az_ms2_local)) * 180.0 / PI - offset_Y;
   inclZ_local = atan2(az_ms2_local, sqrt(ax_ms2_local * ax_ms2_local + ay_ms2_local * ay_ms2_local)) * 180.0 / PI - offset_Z;
+  Serial.printf("X:%.1f Y:%.1f Z:%.1f\n", inclX_local, inclY_local, inclZ_local);
 }
 
 float leerAngulo(uint8_t sensorId, uint8_t eje) {
@@ -515,7 +516,7 @@ bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
 // CALIBRACION DEL EJERCICIO
 // ============================================================
 bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
-  enviarFeedbackBLE("Quedate quieto en posicion inicial");
+  enviarFeedbackBLE("Quedate quieto");
 
   const float TOLERANCIA_ESTABILIDAD = 3.0;
   const int MUESTRAS_ESTABILIDAD_REQUERIDAS = 20;
@@ -561,35 +562,45 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
     return false;
   }
 
-  enviarFeedbackBLE("Hace 1 repeticion lenta para calibrar:");
+  Serial.print("CAL reposo = ");
+  Serial.println(reposoValor);
+  enviarFeedbackBLE("Hace 1 rep lenta para grabar");
 
   const float UMBRAL_SALIDA_CALIB = 5.0;
   const float AMPLITUD_MINIMA_CALIB = 12.0;
-  // Constantes: antes 6.0 y 0.25
-  const float TOLERANCIA_RETORNO_DEG = TOLERANCIA_REPOSO_DEG;  // igual que en las repeticiones
-  const float FRACCION_RETORNO_CALIB = UMBRAL_RETORNO;         // igual que en las repeticiones
-  const int MUESTRAS_CONFIRM_CALIB = 5;
+  const float TOLERANCIA_RETORNO_DEG = 6.0;   // antes 4.0
+  const float FRACCION_RETORNO_CALIB = 0.25;  // antes 0.15
+  const int MUESTRAS_CONFIRM_CALIB = 3;       // antes 5
   const unsigned long TIEMPO_MINIMO_MOVIMIENTO_CALIB = 800;
-  unsigned long tRetornoCalib = 0;
+  const unsigned long ESPERA_INICIO_MS = 15000;  // tiempo para EMPEZAR a moverte
 
   float minV = reposoValor, maxV = reposoValor;
   float amplitudMax = 0;
   float lateralMax[2] = { 0, 0 };
   bool salioDeReposo = false;
   bool retornoCompletado = false;
+  bool avisoVolver = false;
   int contadorRetornoCalib = 0;
   unsigned long tInicioMovCalib = 0;
+  unsigned long tRetornoCalib = 0;
+  unsigned long tLog = 0;
   float vFiltrado = reposoValor;
   const float ALPHA_CALIB = 0.6;
+  float distancia = 0;
 
   unsigned long inicio = millis();
-  while (millis() - inicio < duracionMaximaMs) {
+  while (true) {
+    unsigned long ahora = millis();
+    // 15 s para empezar; una vez que empezaste, 'duracionMaximaMs' para completar la rep
+    if (!salioDeReposo && ahora - inicio > ESPERA_INICIO_MS) break;
+    if (salioDeReposo && ahora - tInicioMovCalib > duracionMaximaMs) break;
+
     maquinaAntirrebote();
     mediciones();
     recibirPaquetesUDP();
     float vRaw = leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
     vFiltrado = ALPHA_CALIB * vRaw + (1 - ALPHA_CALIB) * vFiltrado;
-    float distancia = fabs(vFiltrado - reposoValor);
+    distancia = fabs(vFiltrado - reposoValor);
 
     if (!salioDeReposo && distancia >= UMBRAL_SALIDA_CALIB) {
       salioDeReposo = true;
@@ -606,7 +617,13 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       if (d > lateralMax[p]) lateralMax[p] = d;
     }
 
-    if (salioDeReposo && amplitudMax >= AMPLITUD_MINIMA_CALIB && (millis() - tInicioMovCalib) >= TIEMPO_MINIMO_MOVIMIENTO_CALIB) {
+    // Avisa que ya llego al punto mas lejano y tiene que volver
+    if (salioDeReposo && !avisoVolver && amplitudMax >= AMPLITUD_MINIMA_CALIB && distancia < 0.6 * amplitudMax) {
+      avisoVolver = true;
+      enviarFeedbackBLE("Volve al inicio");
+    }
+
+    if (salioDeReposo && amplitudMax >= AMPLITUD_MINIMA_CALIB && (ahora - tInicioMovCalib) >= TIEMPO_MINIMO_MOVIMIENTO_CALIB) {
       bool enPosicionInicial = (distancia <= TOLERANCIA_RETORNO_DEG) || ((distancia / amplitudMax) <= FRACCION_RETORNO_CALIB);
       if (enPosicionInicial) {
         if (contadorRetornoCalib == 0) tRetornoCalib = millis();
@@ -619,19 +636,30 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
         contadorRetornoCalib = 0;
       }
     }
+
+    if (ahora - tLog >= 300) {
+      tLog = ahora;
+      Serial.printf("CAL dist=%.1f ampMax=%.1f ret=%d\n", distancia, amplitudMax, contadorRetornoCalib);
+    }
     delay(50);
   }
 
+  // Orden correcto: primero se mueve, despues amplitud, despues retorno
   if (!salioDeReposo) {
-    enviarFeedbackBLE("ERROR: No te moviste");
-    return false;
-  }
-  if (!retornoCompletado) {
-    enviarFeedbackBLE("ERROR: No volviste al inicio");
+    Serial.println("CAL FALLO: no se detecto movimiento en 15 s");
+    enviarFeedbackBLE("Err: no te moviste");
     return false;
   }
   if (amplitudMax < AMPLITUD_MINIMA_CALIB) {
-    enviarFeedbackBLE("ERROR: Recorrido muy corto");
+    Serial.printf("CAL FALLO: recorrido corto (%.1f < %.1f)\n", amplitudMax, AMPLITUD_MINIMA_CALIB);
+    enviarFeedbackBLE("Err: recorrido corto");
+    return false;
+  }
+  if (!retornoCompletado) {
+    float limite = FRACCION_RETORNO_CALIB * amplitudMax;
+    if (limite < TOLERANCIA_RETORNO_DEG) limite = TOLERANCIA_RETORNO_DEG;
+    Serial.printf("CAL FALLO: no volvio al inicio (dist=%.1f, limite=%.1f)\n", distancia, limite);
+    enviarFeedbackBLE("Err: no volviste");
     return false;
   }
 
@@ -651,19 +679,36 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
     ej.centroPostura[p] = reposoPostura[p];
     float tol = lateralMax[p] * FACTOR_MARGEN_LATERAL;
     if (tol < TOLERANCIA_LATERAL_MINIMA) tol = TOLERANCIA_LATERAL_MINIMA;
-
-    // TOPE DURO PARA POSTURA: No permite desviar mas de 12 grados aunque la calibracion haya sido mala
     if (tol > 12.0) tol = 12.0;
-
     ej.toleranciaPostura[p] = tol;
   }
 
   duracionCalibrada = tRetornoCalib - tInicioMovCalib;
   if (duracionCalibrada < 500) duracionCalibrada = 500;
 
-  enviarFeedbackBLE("Calibracion exitosa");
+  Serial.printf("CAL OK: reposo=%.1f pico=%.1f amp=%.1f duracion=%lu ms\n", reposoValor, picoValor, amplitudMax, duracionCalibrada);
+  enviarFeedbackBLE("Calibrado. Toca el boton para empezar");
+
+  // Limpiamos la variable por si hubo toques accidentales previos
+  flagBoton = false;
+
+  bool esperandoBoton = true;
+  while (esperandoBoton) {
+    maquinaAntirrebote();
+    recibirPaquetesUDP();
+
+    if (flagBoton == true) {
+      esperandoBoton = false;
+      flagBoton = false;  // Reiniciamos el flag para que no interfiera después
+    }
+
+    delay(20);
+  }
+  // ----------------------------------
+
   return true;
 }
+
 
 // ============================================================
 // VALIDACIONES
@@ -842,7 +887,6 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
               Serial.print("Suavidad: ");
               Serial.println(ratio);
             }
-
             if (picoAlcanzado < UMBRAL_PICO) {
               resultado = "MAL (incompleto)";
               tipo = ERR_RANGO;
@@ -952,7 +996,7 @@ void Maq_General() {
       if (!ledEnHold) ledVerde();
       recibirPaquetesUDP();
       if (millis() - tUltimoAvisoBLE > INTERVALO_AVISO_BLE) {
-        enviarFeedbackBLE("Toca boton para CALIBRAR");
+        enviarFeedbackBLE("Toca boton: calibrar");
         tUltimoAvisoBLE = millis();
       }
 
@@ -967,14 +1011,14 @@ void Maq_General() {
             resetearSerie();
             tUltimoKeepalive = millis();
             estadoMaq_General = MEDICIONES;
-            enviarFeedbackBLE("Calibracion OK A entrenar");
+            enviarFeedbackBLE("Calibrado. Entrena");
           } else {
             mostrarResultadoLed(false);
             enviarDetenerAuxiliares(*ejercicioActual);
           }
         } else {
           mostrarResultadoLed(false);
-          enviarFeedbackBLE("ERROR:Sensores sin respuesta");
+          enviarFeedbackBLE("Err: sensor aux");
         }
         flagBoton = false;
       }

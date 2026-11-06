@@ -8,8 +8,8 @@ final List<Map<String, String>> listaEjercicios = [
   },
   {
     'id': '2',
-    'nombre': 'Elevaciones laterales',
-    'video': 'https://www.youtube.com/watch?v=MwhnGYwxkS0',
+    'nombre': 'Triceps Nuca mancuernas',
+    'video': 'https://www.youtube.com/watch?v=EmhtA32fmcU',
   },
   {
     'id': '3',
@@ -23,8 +23,8 @@ final List<Map<String, String>> listaEjercicios = [
   },
   {
     'id': '5',
-    'nombre': 'Flexiones de pecho',
-    'video': 'https://www.youtube.com/watch?v=5HL5WY0WVJQ',
+    'nombre': 'Peso muerto',
+    'video': 'https://www.youtube.com/watch?v=0XL4cZR2Ink',
   },
 ];
 
