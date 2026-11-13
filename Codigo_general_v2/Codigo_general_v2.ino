@@ -51,8 +51,8 @@ Ticker timerAntirrebote;
 Ticker timerMedicion;
 
 #define PIN_BOTON 5
-#define PIN_LED_R 4
-#define PIN_LED_G 2
+#define PIN_LED_R 2
+#define PIN_LED_G 4
 
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3XX";
@@ -122,9 +122,9 @@ float picoAlcanzado = 0;
 const float ALPHA_BASE_REPOSO = 0.02;
 const float TOLERANCIA_REPOSO_DEG = 7.0;
 const float TOLERANCIA_VEL_DPS = 20.0;
-const float UMBRAL_SALIDA = 0.30;
-const float UMBRAL_PICO = 0.65;
-const float UMBRAL_RETORNO = 0.25;
+const float UMBRAL_SALIDA = 0.20;
+const float UMBRAL_PICO = 0.45;
+const float UMBRAL_RETORNO = 0.35;
 const int MUESTRAS_CONFIRMACION = 3;
 
 unsigned long tFinUltimaRep = 0;
@@ -562,7 +562,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
     // Lógica de finalización INDESTRUCTIBLE:
     // Alcanzó al menos 10 grados. Si bajó al 45% de distancia del pico, o si simplemente se frenó de golpe
     // (velocidad < 5 grados/segundo) después de 1.5 segundos, cierra y guarda.
-    if (salioDeReposo && amplitudMax >= 10.0 && (ahora - tInicioMovCalib) >= 1000) {
+    if (salioDeReposo && amplitudMax >= 10.0 && (ahora - tInicioMovCalib) >= 1500) {
       if (distancia <= (amplitudMax * 0.45) || (distancia < (amplitudMax * 0.8) && velCalibracion < 5.0)) {
         tRetornoCalib = ahora;
         retornoCompletado = true;
@@ -589,9 +589,9 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   for (int p = 0; p < 2; p++) {
     if (ej.sensorPostura[p] == 99) continue;
     ej.centroPostura[p] = reposoPostura[p];
-    float tol = lateralMax[p] * 1.2;  // 20% de margen sobre tu calibración natural
-    if (tol < 4.0) tol = 4.0;         // El límite estricto pero humano
-    if (tol > 12.0) tol = 12.0;       // Bajamos un poco el tope máximo para que no perdone errores groseros
+    float tol = lateralMax[p] * 1.5;  // Antes multiplicaba por 2.0
+    if (tol < 7.0) tol = 7.0;         // Antes era 15.0 (muy permisivo)
+    if (tol > 20.0) tol = 20.0;
     ej.toleranciaPostura[p] = tol;
   }
   duracionCalibrada = max(500UL, tRetornoCalib - tInicioMovCalib);
