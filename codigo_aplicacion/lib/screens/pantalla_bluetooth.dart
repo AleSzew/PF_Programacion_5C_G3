@@ -4,6 +4,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
 
 // ---------------------------------------------------------
 // VARIABLES GLOBALES (Mantienen la conexión viva en iOS/Android)
@@ -11,7 +13,7 @@ import 'package:go_router/go_router.dart';
 final flutterReactiveBleGlobal = FlutterReactiveBle();
 StreamSubscription<ConnectionStateUpdate>? connSubGlobal;
 QualifiedCharacteristic? caracteristicaGlobal;
-bool yaEstaConectado = false; 
+bool yaEstaConectado = false;
 
 final Uuid serviceUuid = Uuid.parse("11111111-1111-1111-1111-111111111111");
 final Uuid charUuid = Uuid.parse("22222222-2222-2222-2222-222222222222");
@@ -34,12 +36,12 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
   @override
   void initState() {
     super.initState();
-    
+
     // Si volvemos a esta pantalla y ya estábamos conectados...
     if (yaEstaConectado && caracteristicaGlobal != null) {
       status = "Conectado";
       feedback = "Conexión activa con el ESP32";
-      
+
       _listenToCharacteristic();
 
       // Mandamos el comando del ejercicio si hay uno listo con breve espera
@@ -57,7 +59,8 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
   @override
   void dispose() {
     scanSub?.cancel();
-    notifySub?.cancel(); // Dejamos de actualizar la pantalla para no causar crasheos
+    notifySub
+        ?.cancel(); // Dejamos de actualizar la pantalla para no causar crasheos
     super.dispose();
   }
 
@@ -65,23 +68,49 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     notifySub?.cancel();
     notifySub = flutterReactiveBleGlobal
         .subscribeToCharacteristic(caracteristicaGlobal!)
-        .listen((data) {
-      if (!mounted) return;
-      
-      final message = String.fromCharCodes(data);
-      setState(() {
-        feedback = message;
-        status = "Conectado";
-      });
-    }, onError: (error) {
-      if (!mounted) return;
-      setState(() {
-        feedback = "Error al recibir datos";
-      });
-    });
+        .listen(
+          (data) {
+            if (!mounted) return;
+
+            final message = String.fromCharCodes(data);
+            setState(() {
+              feedback = message;
+              status = "Conectado";
+            });
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              feedback = "Error al recibir datos";
+            });
+          },
+        );
   }
 
-  void _startScan() {
+  Future<bool> _requestPermissions() async {
+    if (Platform.isAndroid) {
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.locationWhenInUse,
+      ].request();
+
+      bool allGranted = statuses.values.every((s) => s.isGranted);
+
+      if (!allGranted && mounted) {
+        setState(() {
+          feedback =
+              "Se necesitan permisos de Bluetooth y Ubicación para escanear";
+        });
+      }
+      return allGranted;
+    }
+    return true;
+  }
+
+  void _startScan() async {
+    bool permisosOk = await _requestPermissions();
+    if (!permisosOk) return;
     scanSub?.cancel();
     devices = [];
     setState(() {
@@ -89,31 +118,34 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
       feedback = "Buscando Techeck_V2...";
     });
 
-    scanSub = flutterReactiveBleGlobal.scanForDevices(withServices: []).listen(
-      (device) {
-        if (!devices.any((d) => d.id == device.id)) {
-          if (!mounted) return;
-          setState(() {
-            devices.add(device);
-          });
+    scanSub = flutterReactiveBleGlobal
+        .scanForDevices(withServices: [])
+        .listen(
+          (device) {
+            if (!devices.any((d) => d.id == device.id)) {
+              if (!mounted) return;
+              setState(() {
+                devices.add(device);
+              });
 
-          // Conexión automática si detecta el dispositivo Techeck
-          if (device.name == "Techeck_V2" || device.name.contains("Techeck")) {
-            _connectToDevice(device);
-          }
-        }
-      },
-      onError: (error) {
-        if (!mounted) return;
-        setState(() {
-          status = "Error escaneo";
-          feedback = "Error al buscar dispositivos";
-        });
-      },
-    );
+              // Conexión automática si detecta el dispositivo Techeck
+              if (device.name == "Techeck_V2" ||
+                  device.name.contains("Techeck")) {
+                _connectToDevice(device);
+              }
+            }
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              status = "Error escaneo";
+              feedback = "Error al buscar dispositivos";
+            });
+          },
+        );
   }
 
-  void _connectToDevice(DiscoveredDevice device) { 
+  void _connectToDevice(DiscoveredDevice device) {
     scanSub?.cancel();
     setState(() {
       status = "Conectando a ${device.name.isEmpty ? device.id : device.name}";
@@ -121,59 +153,61 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     });
 
     connSubGlobal?.cancel();
-    connSubGlobal = flutterReactiveBleGlobal.connectToDevice(id: device.id).listen(
-      (update) async { 
-        if (update.connectionState == DeviceConnectionState.connected) {
-          yaEstaConectado = true;
-          
-          caracteristicaGlobal = QualifiedCharacteristic(
-            deviceId: device.id,
-            serviceId: serviceUuid,
-            characteristicId: charUuid,
-          );
+    connSubGlobal = flutterReactiveBleGlobal
+        .connectToDevice(id: device.id)
+        .listen(
+          (update) async {
+            if (update.connectionState == DeviceConnectionState.connected) {
+              yaEstaConectado = true;
 
-          if (mounted) {
-            setState(() {
-              status = "Conectado";
-            });
-            _listenToCharacteristic();
-          }
+              caracteristicaGlobal = QualifiedCharacteristic(
+                deviceId: device.id,
+                serviceId: serviceUuid,
+                characteristicId: charUuid,
+              );
 
-          // Espera 500 ms para que el servicio GATT se estabilice antes de enviar
-          await Future.delayed(const Duration(milliseconds: 500));
+              if (mounted) {
+                setState(() {
+                  status = "Conectado";
+                });
+                _listenToCharacteristic();
+              }
 
-          if (ejercicioSeleccionadoId.isNotEmpty && mounted) {
-            _sendCommand(ejercicioSeleccionadoId);
-          }
+              // Espera 500 ms para que el servicio GATT se estabilice antes de enviar
+              await Future.delayed(const Duration(milliseconds: 500));
 
-        } else if (update.connectionState == DeviceConnectionState.disconnected) {
-          yaEstaConectado = false;
-          caracteristicaGlobal = null;
-          if (mounted) {
-            setState(() {
-              status = "Desconectado";
-              feedback = "Se perdió la conexión con el ESP32";
-            });
-          }
-        } else {
-          if (mounted) {
-            setState(() {
-              status = "Estado: ${update.connectionState}";
-            });
-          }
-        }
-      },
-      onError: (error) {
-        yaEstaConectado = false;
-        caracteristicaGlobal = null;
-        if (mounted) {
-          setState(() {
-            status = "Error conexión";
-            feedback = "No se pudo conectar";
-          });
-        }
-      },
-    );
+              if (ejercicioSeleccionadoId.isNotEmpty && mounted) {
+                _sendCommand(ejercicioSeleccionadoId);
+              }
+            } else if (update.connectionState ==
+                DeviceConnectionState.disconnected) {
+              yaEstaConectado = false;
+              caracteristicaGlobal = null;
+              if (mounted) {
+                setState(() {
+                  status = "Desconectado";
+                  feedback = "Se perdió la conexión con el ESP32";
+                });
+              }
+            } else {
+              if (mounted) {
+                setState(() {
+                  status = "Estado: ${update.connectionState}";
+                });
+              }
+            }
+          },
+          onError: (error) {
+            yaEstaConectado = false;
+            caracteristicaGlobal = null;
+            if (mounted) {
+              setState(() {
+                status = "Error conexión";
+                feedback = "No se pudo conectar";
+              });
+            }
+          },
+        );
   }
 
   void _disconnect() {
@@ -195,7 +229,7 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
       });
       return;
     }
-    
+
     try {
       await flutterReactiveBleGlobal.writeCharacteristicWithResponse(
         caracteristicaGlobal!,
@@ -216,7 +250,7 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-           appBar: AppBar(
+      appBar: AppBar(
         title: const Text('Techeck BLE'),
         actions: [
           IconButton(
@@ -245,7 +279,10 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
                     elevation: 6,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+                      side: const BorderSide(
+                        color: Color(0xFFD4AF37),
+                        width: 2,
+                      ),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(24),
@@ -290,7 +327,10 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red.shade700,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ] else ...[
@@ -308,7 +348,10 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  ElevatedButton(onPressed: _startScan, child: const Text("Escanear")),
+                  ElevatedButton(
+                    onPressed: _startScan,
+                    child: const Text("Escanear"),
+                  ),
                   const SizedBox(width: 10),
                   ElevatedButton(
                     onPressed: () {
@@ -330,7 +373,9 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
                         itemCount: devices.length,
                         itemBuilder: (context, index) {
                           final device = devices[index];
-                          final name = device.name.isEmpty ? "Sin nombre" : device.name;
+                          final name = device.name.isEmpty
+                              ? "Sin nombre"
+                              : device.name;
                           return Card(
                             child: ListTile(
                               title: Text(name),
