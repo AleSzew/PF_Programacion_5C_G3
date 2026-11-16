@@ -8,7 +8,7 @@
 
 
     <application
-        android:label="codigo_aplicacion"
+        android:label="TeCheck"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
