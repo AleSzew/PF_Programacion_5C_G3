@@ -829,8 +829,13 @@ void inicializarBLE() {
   pCharacteristic->setCallbacks(new MiCharacteristicCallbacks());
   pCharacteristic->setValue("ESP32 listo");
   pService->start();
-  NimBLEDevice::getAdvertising()->addServiceUUID(pService->getUUID());
-  NimBLEDevice::startAdvertising();
+  
+  // --- INICIO DEL CÓDIGO NUEVO ---
+  NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(pService->getUUID());
+  pAdvertising->setScanResponse(true); // Esto fuerza a que el nombre "Techeck_V2" se envíe
+  pAdvertising->start();
+  // --- FIN DEL CÓDIGO NUEVO ---
 }
 
 unsigned long tUltimoAvisoBLE = 0;
