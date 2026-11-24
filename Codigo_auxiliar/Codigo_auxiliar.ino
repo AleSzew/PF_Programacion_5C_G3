@@ -12,8 +12,8 @@
 // Cambiar a '2' para Auxiliar 2 (IP Estática: 192.168.4.3)
 #define NUMERO_AUXILIAR 2
 
-const char* ssid = "ESP32_C3_Server";
-const char* password = "GRUPO3XX";
+const char *ssid = "ESP32_C3_Server";
+const char *password = "GRUPO3XX";
 
 // Direcciones IP de la red local
 IPAddress ipPrincipal(192, 168, 4, 1);
@@ -21,9 +21,9 @@ IPAddress gateway(192, 168, 4, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 #if NUMERO_AUXILIAR == 1
-  IPAddress ipLocal(192, 168, 4, 2);
+IPAddress ipLocal(192, 168, 4, 2);
 #else
-  IPAddress ipLocal(192, 168, 4, 3);
+IPAddress ipLocal(192, 168, 4, 3);
 #endif
 
 const uint16_t puertoUDP = 8888;
@@ -42,7 +42,7 @@ bool mpuOK = false;
 bool midiendo = false;
 
 unsigned long tUltimoEnvio = 0;
-const unsigned long INTERVALO_ENVIO_MS = 50; // Transmisión a 20 Hz (cada 50 ms)
+const unsigned long INTERVALO_ENVIO_MS = 50;  // Transmisión a 20 Hz (cada 50 ms)
 
 // ============================================================
 // FUNCIONES DEL MPU6050
@@ -142,14 +142,44 @@ void enviarDatosUDP() {
 // ============================================================
 void setup() {
   Serial.begin(115200);
-  delay(1000);
-
+  delay(500);
   Serial.println("\n==================================");
   Serial.print("  ESP-01 AUXILIAR ");
   Serial.println(NUMERO_AUXILIAR);
   Serial.println("==================================");
+  // 1. PRIMERO EL WIFI (Prioridad absoluta de conexión)
+  WiFi.persistent(false);
+  WiFi.disconnect(true);
+  delay(100);
 
-  // Inicialización I2C (SDA = IO2, SCL = IO0)
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+
+  if (!WiFi.config(ipLocal, gateway, subnet)) {
+    Serial.println("Error al aplicar IP estática.");
+  }
+
+  WiFi.begin(ssid, password);
+  Serial.print("Conectando al AP Principal");
+  int intentos = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    intentos++;
+    if (intentos > 20) {
+      Serial.println("\nReintentando asociación con la red...");
+      WiFi.begin(ssid, password);
+      intentos = 0;
+    }
+  
+  Serial.println("\n✅ WiFi Conectado!");
+  Serial.print("IP del Auxiliar: ");
+  Serial.println(WiFi.localIP());
+
+  udp.begin(puertoUDP);
+  Serial.println("Puerto UDP en escucha y listo.");
+
+  // 2. RECIÉN AHORA INICIAMOS EL SENSOR I2C (SDA = IO2, SCL = IO0)
   Wire.begin(PIN_SDA, PIN_SCL);
   sensor.initialize();
 
@@ -161,40 +191,7 @@ void setup() {
     Serial.println("❌ ERROR: No se pudo comunicar con el MPU6050.");
     mpuOK = false;
   }
-
-  // Configuración Wi-Fi robusta para ESP8266
-  WiFi.persistent(false);
-  WiFi.disconnect(true);
-  delay(100);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP); // Desactiva la suspensión de radio Wi-Fi
-
-  if (!WiFi.config(ipLocal, gateway, subnet, gateway)) {
-    Serial.println("Error al aplicar IP estática.");
-  }
-
-  WiFi.begin(ssid, password);
-  Serial.print("Conectando al AP Principal");
-
-  int intentos = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    intentos++;
-    if (intentos > 20) {
-      Serial.println("\nReintentando asociación con la red...");
-      WiFi.begin(ssid, password);
-      intentos = 0;
-    }
-  }
-
-  Serial.println("\n✅ WiFi Conectado!");
-  Serial.print("IP del Auxiliar: ");
-  Serial.println(WiFi.localIP());
-
-  udp.begin(puertoUDP);
-  Serial.println("Puerto UDP en escucha y listo.");
+}
 }
 
 void loop() {
