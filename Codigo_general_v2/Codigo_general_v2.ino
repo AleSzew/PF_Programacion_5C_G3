@@ -1,10 +1,10 @@
-// ESP32-S3 (Principal) - Algoritmo Nivel Producción (Anti-Ceros y WDT Seguro)
+// ESP32-S3 (Principal) - Modo Access Point propio + BLE Android/Motorola + Diagnóstico Serial
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include <MPU6050.h>
 #include "Wire.h"
 #include "WiFi.h"
-#include <NetworkUdp.h>
+#include <WiFiUdp.h>
 #include <Ticker.h>
 #include <NimBLEDevice.h>
 #include "I2Cdev.h"
@@ -26,23 +26,25 @@ struct Ejercicio {
 
 #define CANT_EJERCICIOS 5
 Ejercicio ejercicios[CANT_EJERCICIOS] = {
-  { "Curl de biceps", 0, 1, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Triceps Nuca", 0, 1, 0, 0, { 99, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
+  // { nombre, sensorPrincipal, ejePrincipal, min, max, {sensorPost1, sensorPost2}, {ejePost1, ejePost2}, ... }
+  { "Curl de biceps", 0, 1, 0, 0, { 1, 1 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
+  { "Triceps Nuca", 0, 1, 0, 0, { 1, 1 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
   { "Press de Banca", 0, 2, 0, 0, { 1, 2 }, { 0, 2 }, { 0, 0 }, { 0, 0 } },
-  { "Sentadilla", 0, 0, 0, 0, { 1, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
-  { "Peso Muerto", 1, 0, 0, 0, { 0, 99 }, { 0, 99 }, { 0, 0 }, { 0, 0 } },
+  { "Sentadilla", 0, 0, 0, 0, { 1, 1 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
+  { "Peso Muerto", 1, 0, 0, 0, { 0, 0 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
 };
 
 Ejercicio* ejercicioActual = &ejercicios[0];
 
 // ============================================================
-// HARDWARE Y RED
+// HARDWARE Y RED (ACCESS POINT EN ESP32-S3)
 // ============================================================
 MPU6050 sensor;
 WiFiUDP udp;
 const uint16_t PuertoUDP = 8888;
-IPAddress ipAux1(192, 168, 4, 2);
-IPAddress ipAux2(192, 168, 4, 3);
+IPAddress ipAux1(0, 0, 0, 0);
+IPAddress ipAux2(0, 0, 0, 0);
+IPAddress ipBroadcastAP(192, 168, 4, 255);
 
 NimBLEServer* pServer = nullptr;
 NimBLECharacteristic* pCharacteristic = nullptr;
@@ -57,7 +59,7 @@ Ticker timerMedicion;
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3XX";
 
-bool REQUERIR_AUXILIARES = false;
+bool REQUERIR_AUXILIARES = true;
 
 // ============================================================
 // ESTADOS
@@ -81,19 +83,23 @@ int INTERVALO_MEDICION = 100;
 volatile int codigo = 1;
 
 // ============================================================
-// DATOS DE SENSORES
+// DATOS DE SENSORES Y DIAGNÓSTICO
 // ============================================================
 float inclX_local = 0, inclY_local = 0, inclZ_local = 0;
 float inclX_aux1 = 0, inclY_aux1 = 0, inclZ_aux1 = 0;
 float inclX_aux2 = 0, inclY_aux2 = 0, inclZ_aux2 = 0;
 bool aux1_ok = false;
 bool aux2_ok = false;
+bool aux1_previo = false;
+bool aux2_previo = false;
+int estacionesPrevias = -1;
 unsigned long tUltimoPaqueteAux1 = 0;
 unsigned long tUltimoPaqueteAux2 = 0;
 const unsigned long TIMEOUT_AUXILIAR_MS = 1000;
 
 unsigned long tUltimoKeepalive = 0;
 const unsigned long INTERVALO_KEEPALIVE_MS = 1000;
+unsigned long tUltimoLogEstado = 0;
 
 float offset_X = 0, offset_Y = 0, offset_Z = 0;
 float anguloAnteriorPrincipal = 0;
@@ -122,7 +128,7 @@ float picoAlcanzado = 0;
 const float ALPHA_BASE_REPOSO = 0.02;
 const float TOLERANCIA_REPOSO_DEG = 7.0;
 const float TOLERANCIA_VEL_DPS = 20.0;
-const float UMBRAL_SALIDA = 0.20;
+const float UMBRAL_SALIDA = 0.30;
 const float UMBRAL_PICO = 0.45;
 const float UMBRAL_RETORNO = 0.35;
 const int MUESTRAS_CONFIRMACION = 3;
@@ -148,9 +154,9 @@ float recorrido = 0;
 
 int contadorErrorRango = 0;
 int contadorErrorPostura = 0;
-const int MUESTRAS_CONFIRM_RANGO = 4;
-const int MUESTRAS_CONFIRM_POSTURA = 3;
-const int MUESTRAS_CONFIRM_VEL = 3;
+const int MUESTRAS_CONFIRM_RANGO = 5;    // Antes: 4
+const int MUESTRAS_CONFIRM_POSTURA = 2;  // Antes: 3 (detecta inclinación al instante)
+const int MUESTRAS_CONFIRM_VEL = 4;
 const float RATIO_SUAVIDAD_MAX = 2.0;
 
 int errExceso = 0;
@@ -158,7 +164,7 @@ int errTemblor = 0;
 
 unsigned long tiempoUltimoMovimiento = 0;
 float anguloAnteriorInactividad = 0.0;
-const float UMBRAL_MOVIMIENTO = 3.0;
+const float UMBRAL_MOVIMIENTO = 1.8;
 const unsigned long TIEMPO_MAX_INACTIVIDAD = 4500;
 
 // ============================================================
@@ -293,6 +299,7 @@ void maquinaAntirrebote() {
     case LIBERACION:
       if (lecturaBoton == HIGH) {
         flagBoton = true;
+        Serial.println("[BOTON] Pulsacion detectada.");
         estadoBoton = ESPERA;
       }
       break;
@@ -306,12 +313,12 @@ void funcionTimerMedicion() {
 }
 
 void calibrarOffsetGlobal() {
+  Serial.println("[MPU-LOCAL] Calibrando offset inicial...");
   float sumaX = 0, sumaY = 0, sumaZ = 0;
   int muestrasValidas = 0;
   for (int i = 0; i < 100; i++) {
     int16_t ax, ay, az;
     sensor.getAcceleration(&ax, &ay, &az);
-    // Filtro Anti-Cero de inicialización
     if (ax != 0 || ay != 0 || az != 0) {
       float x = (ax / 16384.0) * 9.81;
       float y = (ay / 16384.0) * 9.81;
@@ -321,21 +328,21 @@ void calibrarOffsetGlobal() {
       sumaZ += atan2(z, sqrt(x * x + y * y)) * 180.0 / PI;
       muestrasValidas++;
     }
-    vTaskDelay(pdMS_TO_TICKS(10));  // Seguro para RTOS
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
   if (muestrasValidas > 0) {
     offset_X = sumaX / muestrasValidas;
     offset_Y = sumaY / muestrasValidas;
     offset_Z = sumaZ / muestrasValidas;
+    Serial.printf("[MPU-LOCAL] Calibrado OK (%d muestras) -> Offsets X:%.2f Y:%.2f Z:%.2f\n", muestrasValidas, offset_X, offset_Y, offset_Z);
+  } else {
+    Serial.println("[MPU-LOCAL] ADVERTENCIA: 0 muestras validas al calibrar (revisar I2C local).");
   }
 }
 
 void mediciones() {
   int16_t ax, ay, az;
   sensor.getAcceleration(&ax, &ay, &az);
-
-  // FILTRO ANTI-CEROS (Protección I2C)
-  // Si el MPU6050 falla, devuelve (0,0,0). Abortamos el cálculo para no arruinar las variables de estado.
   if (ax == 0 && ay == 0 && az == 0) return;
 
   float x = (ax / 16384.0) * 9.81;
@@ -381,7 +388,7 @@ float progreso(float v) {
 }
 
 // ============================================================
-// RED Y AUXILIARES
+// RED Y AUXILIARES (IPs ESTÁTICAS 192.168.4.2 y 192.168.4.3)
 // ============================================================
 void recibirPaquetesUDP() {
   int packetSize = udp.parsePacket();
@@ -390,33 +397,80 @@ void recibirPaquetesUDP() {
     char buffer[64] = { 0 };
     udp.read(buffer, sizeof(buffer) - 1);
     String payload = String(buffer);
-    if (payload != "ERROR_I2C" && payload != "NOMIDIENDO") {
+
+    int rolAux = 0;
+    if (remoteIP != IPAddress(0, 0, 0, 0) && remoteIP != WiFi.softAPIP()) {
+      if (ipAux1 == remoteIP) {
+        rolAux = 1;
+        tUltimoPaqueteAux1 = millis();
+      } else if (ipAux2 == remoteIP) {
+        rolAux = 2;
+        tUltimoPaqueteAux2 = millis();
+      } else if (ipAux1 == IPAddress(0, 0, 0, 0)) {
+        ipAux1 = remoteIP;
+        rolAux = 1;
+        tUltimoPaqueteAux1 = millis();
+        Serial.print("[RED] Primer modulo conectado -> Asignado como AUXILIAR 1 (IP: ");
+        Serial.print(ipAux1);
+        Serial.println(")");
+      } else if (ipAux2 == IPAddress(0, 0, 0, 0)) {
+        ipAux2 = remoteIP;
+        rolAux = 2;
+        tUltimoPaqueteAux2 = millis();
+        Serial.print("[RED] Segundo modulo conectado -> Asignado como AUXILIAR 2 (IP: ");
+        Serial.print(ipAux2);
+        Serial.println(")");
+      }
+    }
+
+    if (payload == "ERROR_I2C") {
+      Serial.printf("[UDP-ALERTA] Auxiliar %d (IP %s) reporta ERROR_I2C en su MPU6050!\n",
+                    rolAux, remoteIP.toString().c_str());
+    } else if (payload != "NOMIDIENDO" && rolAux > 0) {
       int c1 = payload.indexOf(',');
       int c2 = payload.indexOf(',', c1 + 1);
       if (c1 > 0 && c2 > c1) {
         float x = payload.substring(0, c1).toFloat();
         float y = payload.substring(c1 + 1, c2).toFloat();
         float z = payload.substring(c2 + 1).toFloat();
-        // Filtro Anti-Ceros de auxiliares
         if (x != 0.0 || y != 0.0 || z != 0.0) {
-          if (remoteIP == ipAux1) {
+          if (rolAux == 1) {
             inclX_aux1 = x;
             inclY_aux1 = y;
             inclZ_aux1 = z;
-            tUltimoPaqueteAux1 = millis();
-          } else if (remoteIP == ipAux2) {
+          } else if (rolAux == 2) {
             inclX_aux2 = x;
             inclY_aux2 = y;
             inclZ_aux2 = z;
-            tUltimoPaqueteAux2 = millis();
           }
         }
       }
     }
     packetSize = udp.parsePacket();
   }
-  aux1_ok = (tUltimoPaqueteAux1 > 0) && (millis() - tUltimoPaqueteAux1 < TIMEOUT_AUXILIAR_MS);
-  aux2_ok = (tUltimoPaqueteAux2 > 0) && (millis() - tUltimoPaqueteAux2 < TIMEOUT_AUXILIAR_MS);
+
+  aux1_ok = (ipAux1 != IPAddress(0, 0, 0, 0)) && (millis() - tUltimoPaqueteAux1 < TIMEOUT_AUXILIAR_MS);
+  aux2_ok = (ipAux2 != IPAddress(0, 0, 0, 0)) && (millis() - tUltimoPaqueteAux2 < TIMEOUT_AUXILIAR_MS);
+
+  if (!aux1_ok && ipAux1 != IPAddress(0, 0, 0, 0)) {
+    Serial.printf("[RED] Auxiliar 1 (%s) DESCONECTADO. Ranura liberada.\n", ipAux1.toString().c_str());
+    ipAux1 = IPAddress(0, 0, 0, 0);
+    inclX_aux1 = inclY_aux1 = inclZ_aux1 = 0;
+  }
+  if (!aux2_ok && ipAux2 != IPAddress(0, 0, 0, 0)) {
+    Serial.printf("[RED] Auxiliar 2 (%s) DESCONECTADO. Ranura liberada.\n", ipAux2.toString().c_str());
+    ipAux2 = IPAddress(0, 0, 0, 0);
+    inclX_aux2 = inclY_aux2 = inclZ_aux2 = 0;
+  }
+
+  if (aux1_ok != aux1_previo) {
+    aux1_previo = aux1_ok;
+    if (aux1_ok) Serial.printf("[RED] Auxiliar 1 (%s) ONLINE.\n", ipAux1.toString().c_str());
+  }
+  if (aux2_ok != aux2_previo) {
+    aux2_previo = aux2_ok;
+    if (aux2_ok) Serial.printf("[RED] Auxiliar 2 (%s) ONLINE.\n", ipAux2.toString().c_str());
+  }
 }
 
 bool sensorUsado(Ejercicio& ej, uint8_t sensorId) {
@@ -429,21 +483,35 @@ bool sensorUsado(Ejercicio& ej, uint8_t sensorId) {
 void seleccionarEjercicio() {
   if (codigo < 1 || codigo > CANT_EJERCICIOS) ejercicioActual = &ejercicios[0];
   else ejercicioActual = &ejercicios[codigo - 1];
+  Serial.print("[EJERCICIO] Seleccionado: ");
+  Serial.println(ejercicioActual->nombre);
 }
 
 void enviarComandoUDPAuxiliares(const char* cmd, Ejercicio& ej) {
-  if (sensorUsado(ej, 1)) {
+  bool enviadoDirecto = false;
+
+  if (sensorUsado(ej, 1) && ipAux1 != IPAddress(0, 0, 0, 0)) {
     udp.beginPacket(ipAux1, PuertoUDP);
     udp.print(cmd);
     udp.endPacket();
+    enviadoDirecto = true;
   }
-  if (sensorUsado(ej, 2)) {
+  if (sensorUsado(ej, 2) && ipAux2 != IPAddress(0, 0, 0, 0)) {
     udp.beginPacket(ipAux2, PuertoUDP);
+    udp.print(cmd);
+    udp.endPacket();
+    enviadoDirecto = true;
+  }
+
+  if (!enviadoDirecto || strcmp(cmd, "DETENER") == 0) {
+    udp.beginPacket(ipBroadcastAP, PuertoUDP);
     udp.print(cmd);
     udp.endPacket();
   }
 }
+
 void enviarDetenerAuxiliares(Ejercicio& ej) {
+  Serial.println("[UDP] Enviando orden DETENER a auxiliares...");
   for (int i = 0; i < 3; i++) {
     enviarComandoUDPAuxiliares("DETENER", ej);
     delay(20);
@@ -451,9 +519,8 @@ void enviarDetenerAuxiliares(Ejercicio& ej) {
 }
 
 bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
-  bool necesitaAux1 = sensorUsado(ej, 1);
+  bool necesitaAux1 = true;  // Siempre exige al menos 1 auxiliar conectado
   bool necesitaAux2 = sensorUsado(ej, 2);
-  if (!necesitaAux1 && !necesitaAux2) return true;
 
   unsigned long inicioHandshake = millis();
   while (millis() - inicioHandshake < 2500) {
@@ -468,15 +535,18 @@ bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
       recibirPaquetesUDP();
       vTaskDelay(pdMS_TO_TICKS(10));
     }
-    if ((!necesitaAux1 || aux1_ok) && (!necesitaAux2 || aux2_ok)) return true;
+    if ((!necesitaAux1 || aux1_ok) && (!necesitaAux2 || aux2_ok)) {
+      return true;
+    }
   }
-  return !REQUERIR_AUXILIARES;
+  return false;  // Bloquea el inicio si falta el auxiliar
 }
 
 // ============================================================
-// CALIBRACION NIVEL DIOS (Segura, Dinámica y No-Bloqueante)
+// CALIBRACION
 // ============================================================
 bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
+  Serial.println("[CALIB] Fase 1: Quedate quieto (1.5s)...");
   enviarFeedbackBLE("Quedate quieto");
 
   float reposoValor = 0;
@@ -495,7 +565,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       }
       muestras++;
     }
-    vTaskDelay(pdMS_TO_TICKS(20));  // Evita que se dispare el Watchdog Timer
+    vTaskDelay(pdMS_TO_TICKS(20));
     yield();
   }
 
@@ -505,6 +575,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       if (ej.sensorPostura[p] != 99) reposoPostura[p] /= muestras;
   }
 
+  Serial.printf("[CALIB] Reposo base: %.2f deg. Fase 2: Hace 1 rep lenta...\n", reposoValor);
   enviarFeedbackBLE("Hace 1 rep lenta para grabar");
 
   float minV = reposoValor, maxV = reposoValor;
@@ -523,7 +594,6 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   while (true) {
     unsigned long ahora = millis();
 
-    // Timeout general
     if (ahora - inicio > duracionMaximaMs) {
       if (amplitudMax >= 10.0) retornoCompletado = true;
       break;
@@ -536,7 +606,6 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
     float vActual = leerAngulo(ej.sensorPrincipal, ej.ejePrincipal);
     float distancia = fabs(vActual - reposoValor);
 
-    // Calculo de velocidad local para detectar freno
     float dt = (ahora - tAnterior) / 1000.0;
     if (dt > 0.05) {
       velCalibracion = fabs(vActual - anguloAnterior) / dt;
@@ -559,9 +628,6 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       if (d > lateralMax[p]) lateralMax[p] = d;
     }
 
-    // Lógica de finalización INDESTRUCTIBLE:
-    // Alcanzó al menos 10 grados. Si bajó al 45% de distancia del pico, o si simplemente se frenó de golpe
-    // (velocidad < 5 grados/segundo) después de 1.5 segundos, cierra y guarda.
     if (salioDeReposo && amplitudMax >= 10.0 && (ahora - tInicioMovCalib) >= 1500) {
       if (distancia <= (amplitudMax * 0.45) || (distancia < (amplitudMax * 0.8) && velCalibracion < 5.0)) {
         tRetornoCalib = ahora;
@@ -570,11 +636,12 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(30));  // Clave para mantener vivo el ESP32
+    vTaskDelay(pdMS_TO_TICKS(30));
     yield();
   }
 
   if (!retornoCompletado || amplitudMax < 10.0) {
+    Serial.println("[CALIB] ERROR: Repeticion no detectada (amplitud insuficiente).");
     enviarFeedbackBLE("Err: Repeticion no detectada");
     return false;
   }
@@ -589,13 +656,14 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   for (int p = 0; p < 2; p++) {
     if (ej.sensorPostura[p] == 99) continue;
     ej.centroPostura[p] = reposoPostura[p];
-    float tol = lateralMax[p] * 1.5;  // Antes multiplicaba por 2.0
-    if (tol < 7.0) tol = 7.0;         // Antes era 15.0 (muy permisivo)
-    if (tol > 20.0) tol = 20.0;
+    float tol = lateralMax[p] * 1.2;  // Antes: 1.5
+    if (tol < 6.0) tol = 6.0;         // Antes: 7.0
+    if (tol > 11.0) tol = 11.0;       // Antes: 20.0 (más de 11° hacia adelante = MAL)
     ej.toleranciaPostura[p] = tol;
   }
   duracionCalibrada = max(500UL, tRetornoCalib - tInicioMovCalib);
 
+  Serial.printf("[CALIB] Completada! Amplitud: %.2f deg | Duracion: %lu ms. Toca el boton para iniciar.\n", amplitudObjetivo, duracionCalibrada);
   enviarFeedbackBLE("Calibrado. Toca el boton");
   flagBoton = false;
   while (true) {
@@ -646,10 +714,19 @@ void cerrarRepeticion(const String& resultado, TipoError tipo, int sensorId) {
     contadorErrores++;
     registrarError(tipo, sensorId);
   }
+  Serial.printf("[REP] Resultado: %s | Total BIEN: %d | MAL: %d\n", resultado.c_str(), contadorBien, contadorErrores);
   enviarContadorBLE();
 }
 
 void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
+  if (!aux1_ok || (sensorUsado(ej, 2) && !aux2_ok)) {
+    registrarError(ERR_DESCONEXION, (!aux1_ok) ? 1 : 2);
+    mostrarResultadoLed(false);
+    enviarDetenerAuxiliares(ej);
+    enviarFeedbackBLE("ERR: Auxiliar desconectado");
+    estadoMaq_General = INICIALIZACION;
+    return;
+  }
   if ((ej.sensorPrincipal == 1 && !aux1_ok) || (ej.sensorPrincipal == 2 && !aux2_ok)) {
     if (faseRep != REPOSO) cerrarRepeticion("MAL (sensor desconectado)", ERR_DESCONEXION, ej.sensorPrincipal);
     return;
@@ -806,36 +883,58 @@ void resetearSerie() {
 }
 
 // ============================================================
-// BLE CLASES Y MAQUINA
+// BLE COMPATIBLE CON ANDROID Y MOTOROLA
 // ============================================================
 class MiServerCallbacks : public NimBLEServerCallbacks {
+  void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
+    Serial.println("[BLE] Celular Android/Motorola CONECTADO!");
+    pServer->updateConnParams(connInfo.getConnHandle(), 12, 24, 0, 100);
+  }
   void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
+    Serial.printf("[BLE] Celular DESCONECTADO (razon: %d). Reiniciando publicidad...\n", reason);
     NimBLEDevice::startAdvertising();
   }
 };
+
 class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
     std::string valor = pCharacteristic->getValue();
-    if (valor.length() > 0) codigo = atoi(valor.c_str());
+    if (valor.length() > 0) {
+      codigo = atoi(valor.c_str());
+      Serial.printf("[BLE] Comando recibido desde App: '%s' -> Codigo ejercicio = %d\n", valor.c_str(), codigo);
+    }
   }
 };
 
 void inicializarBLE() {
+  Serial.println("[BLE] Iniciando servidor NimBLE 'Techeck_V2'...");
   NimBLEDevice::init("Techeck_V2");
+  NimBLEDevice::setMTU(128);
+  NimBLEDevice::setSecurityAuth(false, false, false);
+
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MiServerCallbacks());
+
   NimBLEService* pService = pServer->createService("11111111-1111-1111-1111-111111111111");
-  pCharacteristic = pService->createCharacteristic("22222222-2222-2222-2222-222222222222", NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+  pCharacteristic = pService->createCharacteristic(
+    "22222222-2222-2222-2222-222222222222",
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::NOTIFY);
   pCharacteristic->setCallbacks(new MiCharacteristicCallbacks());
   pCharacteristic->setValue("ESP32 listo");
   pService->start();
-  
-  // --- INICIO DEL CÓDIGO NUEVO ---
+
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(pService->getUUID());
-  pAdvertising->setScanResponse(true); // Esto fuerza a que el nombre "Techeck_V2" se envíe
+  NimBLEAdvertisementData advData;
+  advData.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+  advData.addServiceUUID(pService->getUUID());
+  pAdvertising->setAdvertisementData(advData);
+
+  NimBLEAdvertisementData scanData;
+  scanData.setName("Techeck_V2");
+  pAdvertising->setScanResponseData(scanData);
+
   pAdvertising->start();
-  // --- FIN DEL CÓDIGO NUEVO ---
+  Serial.println("[BLE] Visible y anunciando para dispositivos Android/Motorola.");
 }
 
 unsigned long tUltimoAvisoBLE = 0;
@@ -843,10 +942,17 @@ unsigned long tUltimoAvisoBLE = 0;
 void Maq_General() {
   switch (estadoMaq_General) {
     case INICIALIZACION:
-      if (!ledEnHold) ledVerde();
       recibirPaquetesUDP();
-      if (millis() - tUltimoAvisoBLE > 4000) {
-        enviarFeedbackBLE("Toca boton: calibrar");
+      if (!ledEnHold) {
+        if (aux1_ok) ledVerde();
+        else ledRojo();  // LED rojo fijo mientras no haya auxiliar conectado
+      }
+      if (millis() - tUltimoAvisoBLE > 3000) {
+        if (aux1_ok) {
+          enviarFeedbackBLE("Auxiliar OK. Toca boton");
+        } else {
+          enviarFeedbackBLE("ERR: Sin auxiliar conectado");
+        }
         tUltimoAvisoBLE = millis();
       }
       if (flagBoton) {
@@ -855,7 +961,7 @@ void Maq_General() {
         seleccionarEjercicio();
         if (iniciarMedicionEnAuxiliares(*ejercicioActual)) {
           ledVerde();
-          if (calibrarEjercicio(*ejercicioActual, 15000)) {  // Timeout seguro
+          if (calibrarEjercicio(*ejercicioActual, 15000)) {
             resetearSerie();
             tUltimoKeepalive = millis();
             estadoMaq_General = MEDICIONES;
@@ -866,7 +972,7 @@ void Maq_General() {
           }
         } else {
           mostrarResultadoLed(false);
-          enviarFeedbackBLE("Err: sensor aux");
+          enviarFeedbackBLE("ERR: No se conecto auxiliar");
         }
         flagBoton = false;
       }
@@ -889,6 +995,7 @@ void Maq_General() {
         flagBoton = false;
         feedbackEnviado = false;
         estadoMaq_General = ANALISIS_SERIE;
+        Serial.println("[ESTADO] -> ANALISIS_SERIE");
       }
       break;
 
@@ -903,17 +1010,22 @@ void Maq_General() {
         flagBoton = false;
         feedbackEnviado = false;
         estadoMaq_General = C_APLICACION;
+        Serial.println("[ESTADO] -> C_APLICACION (Reporte de errores)");
       }
       break;
 
     case C_APLICACION:
       if (!feedbackEnviado) {
-        enviarFeedbackBLE(obtenerDetalleErrores() + " -> Toca reiniciar");
+        String reporte = obtenerDetalleErrores();
+        Serial.print("[REPORTE] ");
+        Serial.println(reporte);
+        enviarFeedbackBLE(reporte + " -> Toca reiniciar");
         feedbackEnviado = true;
       }
       if (flagBoton) {
         flagBoton = false;
         estadoMaq_General = INICIALIZACION;
+        Serial.println("[ESTADO] -> INICIALIZACION");
       }
       break;
   }
@@ -923,6 +1035,7 @@ void Maq_General() {
 // SETUP / LOOP
 // ============================================================
 void irADormir() {
+  Serial.println("[SISTEMA] Entrando en Deep Sleep...");
   delay(50);
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
   esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_BOTON, ESP_GPIO_WAKEUP_GPIO_LOW);
@@ -935,6 +1048,12 @@ void irADormir() {
 }
 
 void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("\n==================================================");
+  Serial.println("   INICIANDO ESP32-S3 PRINCIPAL (MODO ACCESS POINT)");
+  Serial.println("==================================================");
+
   pinMode(PIN_BOTON, INPUT_PULLUP);
   pinMode(PIN_LED_R, OUTPUT);
   pinMode(PIN_LED_G, OUTPUT);
@@ -961,13 +1080,27 @@ void setup() {
   ledAmarillo();
   delay(2000);
 
+  Serial.println("[I2C] Iniciando MPU6050 local (SDA=44, SCL=1)...");
   Wire.begin(44, 1);
   sensor.initialize();
+  if (sensor.testConnection()) {
+    Serial.println("[MPU-LOCAL] CONECTADO correctamente!");
+  } else {
+    Serial.println("[MPU-LOCAL] ERROR: No responde el sensor MPU6050 local!");
+  }
+
+  Serial.printf("[WIFI-AP] Creando punto de acceso '%s' en canal 1...\n", ssid);
   WiFi.mode(WIFI_AP);
+  WiFi.setSleep(false);
   WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
   WiFi.softAP(ssid, password, 1, 0, 4);
 
+  Serial.print("[WIFI-AP] Access Point activo! IP Servidor: ");
+  Serial.println(WiFi.softAPIP());
+
   udp.begin(PuertoUDP);
+  Serial.printf("[UDP] Escuchando en puerto %d\n", PuertoUDP);
+
   inicializarBLE();
   calibrarOffsetGlobal();
 
@@ -976,9 +1109,28 @@ void setup() {
   ledVerde();
   estadoBoton = ESPERA;
   flagBoton = false;
+  Serial.println("[SISTEMA] Setup finalizado. Listo en estado INICIALIZACION.\n");
 }
 
 void loop() {
+  // Detectar si los ESP-01 se asocian a nivel Wi-Fi con el AP del ESP32-S3
+  int estacionesActuales = WiFi.softAPgetStationNum();
+  if (estacionesActuales != estacionesPrevias) {
+    estacionesPrevias = estacionesActuales;
+    Serial.printf("[WIFI-AP] Dispositivos Wi-Fi asociados al ESP32-S3: %d\n", estacionesActuales);
+  }
+
+  // Reporte periodico de diagnostico cada 3 segundos
+  if (millis() - tUltimoLogEstado >= 3000) {
+    tUltimoLogEstado = millis();
+    Serial.printf("[DIAG] AP_Stations:%d | BLE_Clients:%d | Aux1:%s (X:%.1f) | Aux2:%s (X:%.1f) | Local_X:%.1f\n",
+                  WiFi.softAPgetStationNum(),
+                  (pServer != nullptr) ? pServer->getConnectedCount() : 0,
+                  aux1_ok ? "OK" : "OFF", inclX_aux1,
+                  aux2_ok ? "OK" : "OFF", inclX_aux2,
+                  inclX_local);
+  }
+
   maquinaAntirrebote();
   actualizarHoldLed();
   Maq_General();
