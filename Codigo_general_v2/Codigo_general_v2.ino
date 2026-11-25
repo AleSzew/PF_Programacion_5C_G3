@@ -24,14 +24,14 @@ struct Ejercicio {
   float toleranciaPostura[2];
 };
 
+// Orden alineado con los IDs 1..5 de carrito_ejercicios.dart
 #define CANT_EJERCICIOS 5
 Ejercicio ejercicios[CANT_EJERCICIOS] = {
-  // { nombre, sensorPrincipal, ejePrincipal, min, max, {sensorPost1, sensorPost2}, {ejePost1, ejePost2}, ... }
   { "Curl de biceps", 0, 1, 0, 0, { 1, 1 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
-  { "Triceps Nuca", 0, 1, 0, 0, { 1, 1 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
+  { "Triceps Nuca",   0, 1, 0, 0, { 1, 1 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
+  { "Sentadilla",     0, 0, 0, 0, { 1, 1 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
   { "Press de Banca", 0, 2, 0, 0, { 1, 2 }, { 0, 2 }, { 0, 0 }, { 0, 0 } },
-  { "Sentadilla", 0, 0, 0, 0, { 1, 1 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
-  { "Peso Muerto", 1, 0, 0, 0, { 0, 0 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
+  { "Peso Muerto",    1, 0, 0, 0, { 0, 0 }, { 0, 1 }, { 0, 0 }, { 0, 0 } },
 };
 
 Ejercicio* ejercicioActual = &ejercicios[0];
@@ -108,6 +108,18 @@ float velocidadPrincipal = 0;
 const float ALPHA_VEL = 0.3;
 
 // ============================================================
+// TOLERANCIAS CONFIGURABLES POR BLE Y ACUMULADORES DE RESUMEN
+// ============================================================
+float tolPosturaGrados = 11.0;
+float factorDuracionMin = 0.4;
+float factorDuracionMax = 3.5;
+float toleranciaReposoDeg = 7.0;
+
+float sumaVelocidadSerie = 0;
+unsigned long muestrasVelocidadSerie = 0;
+float rangoMaximoSerie = 0;
+
+// ============================================================
 // ESTADO DE LA REPETICION
 // ============================================================
 enum FaseRep { REPOSO,
@@ -126,7 +138,6 @@ int direccionMovimiento = 1;
 float picoAlcanzado = 0;
 
 const float ALPHA_BASE_REPOSO = 0.02;
-const float TOLERANCIA_REPOSO_DEG = 7.0;
 const float TOLERANCIA_VEL_DPS = 20.0;
 const float UMBRAL_SALIDA = 0.30;
 const float UMBRAL_PICO = 0.45;
@@ -137,8 +148,6 @@ unsigned long tFinUltimaRep = 0;
 const unsigned long T_MIN_ENTRE_REPS = 800;
 
 unsigned long duracionCalibrada = 1500;
-const float FACTOR_DURACION_MIN = 0.4;
-const float FACTOR_DURACION_MAX = 3.5;
 const unsigned long T_MIN = 200;
 
 int contadorRetorno = 0;
@@ -154,8 +163,8 @@ float recorrido = 0;
 
 int contadorErrorRango = 0;
 int contadorErrorPostura = 0;
-const int MUESTRAS_CONFIRM_RANGO = 5;    // Antes: 4
-const int MUESTRAS_CONFIRM_POSTURA = 2;  // Antes: 3 (detecta inclinación al instante)
+const int MUESTRAS_CONFIRM_RANGO = 5;
+const int MUESTRAS_CONFIRM_POSTURA = 2;
 const int MUESTRAS_CONFIRM_VEL = 4;
 const float RATIO_SUAVIDAD_MAX = 2.0;
 
@@ -519,7 +528,7 @@ void enviarDetenerAuxiliares(Ejercicio& ej) {
 }
 
 bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
-  bool necesitaAux1 = true;  // Siempre exige al menos 1 auxiliar conectado
+  bool necesitaAux1 = true;
   bool necesitaAux2 = sensorUsado(ej, 2);
 
   unsigned long inicioHandshake = millis();
@@ -539,7 +548,7 @@ bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
       return true;
     }
   }
-  return false;  // Bloquea el inicio si falta el auxiliar
+  return false;
 }
 
 // ============================================================
@@ -656,9 +665,9 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   for (int p = 0; p < 2; p++) {
     if (ej.sensorPostura[p] == 99) continue;
     ej.centroPostura[p] = reposoPostura[p];
-    float tol = lateralMax[p] * 1.2;  // Antes: 1.5
-    if (tol < 6.0) tol = 6.0;         // Antes: 7.0
-    if (tol > 11.0) tol = 11.0;       // Antes: 20.0 (más de 11° hacia adelante = MAL)
+    float tol = lateralMax[p] * 1.2;
+    if (tol < 6.0) tol = 6.0;
+    if (tol > tolPosturaGrados) tol = tolPosturaGrados;
     ej.toleranciaPostura[p] = tol;
   }
   duracionCalibrada = max(500UL, tRetornoCalib - tInicioMovCalib);
@@ -743,10 +752,10 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
 
   switch (faseRep) {
     case REPOSO:
-      if (fabs(v - baseLocal) < TOLERANCIA_REPOSO_DEG) baseLocal = ALPHA_BASE_REPOSO * v + (1 - ALPHA_BASE_REPOSO) * baseLocal;
+      if (fabs(v - baseLocal) < toleranciaReposoDeg) baseLocal = ALPHA_BASE_REPOSO * v + (1 - ALPHA_BASE_REPOSO) * baseLocal;
       if (fabs(v - baseLocal) < 8.0) tUltimoDentroReposo = millis();
 
-      if (p < UMBRAL_RETORNO || fabs(v - baseLocal) <= TOLERANCIA_REPOSO_DEG) {
+      if (p < UMBRAL_RETORNO || fabs(v - baseLocal) <= toleranciaReposoDeg) {
         esperandoRetornoAInicio = false;
         avisoRetornoEnviado = false;
       } else if (esperandoRetornoAInicio && !avisoRetornoEnviado && (millis() - tFinUltimaRep > 4000)) {
@@ -772,7 +781,16 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
       break;
 
     case EN_MOVIMIENTO:
-      unsigned long duracionMax = (unsigned long)(duracionCalibrada * FACTOR_DURACION_MAX);
+      unsigned long duracionMax = (unsigned long)(duracionCalibrada * factorDuracionMax);
+
+      // Acumular métricas para el resumen de la serie
+      sumaVelocidadSerie += fabs(velocidadActual);
+      muestrasVelocidadSerie++;
+      float amplitudActual = fabs(v - baseLocal);
+      if (amplitudActual > rangoMaximoSerie) {
+        rangoMaximoSerie = amplitudActual;
+      }
+
       if (fabs(v - anguloAnteriorInactividad) > UMBRAL_MOVIMIENTO) {
         tiempoUltimoMovimiento = millis();
         anguloAnteriorInactividad = v;
@@ -821,11 +839,11 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
           tipo = ERR_POSTURA;
         }
         sensorFallido = posturaFalla;
-      } else if (subFaseRep == BAJANDO && (p <= UMBRAL_RETORNO || fabs(v - baseLocal) <= TOLERANCIA_REPOSO_DEG)) {
+      } else if (subFaseRep == BAJANDO && (p <= UMBRAL_RETORNO || fabs(v - baseLocal) <= toleranciaReposoDeg)) {
         if (contadorRetorno == 0) tPrimerRetorno = millis();
         if (++contadorRetorno >= MUESTRAS_CONFIRMACION) {
           unsigned long duracion = tPrimerRetorno - tInicioRep;
-          unsigned long duracionMin = max(T_MIN, (unsigned long)(duracionCalibrada * FACTOR_DURACION_MIN));
+          unsigned long duracionMin = max(T_MIN, (unsigned long)(duracionCalibrada * factorDuracionMin));
           float idealGrados = ((picoAlcanzado - pInicioRep) + (picoAlcanzado - p)) * amplitudObjetivo;
           float ratio = (idealGrados > 1.0) ? (recorrido / idealGrados) : 1.0;
 
@@ -877,6 +895,9 @@ void resetearSerie() {
   errLento = 0;
   errDesconexion = 0;
   errInactivo = 0;
+  sumaVelocidadSerie = 0;
+  muestrasVelocidadSerie = 0;
+  rangoMaximoSerie = 0;
   anguloAnteriorPrincipal = leerAngulo(ejercicioActual->sensorPrincipal, ejercicioActual->ejePrincipal);
   tAnguloAnteriorPrincipal = 0;
   velocidadPrincipal = 0;
@@ -899,7 +920,30 @@ class MiServerCallbacks : public NimBLEServerCallbacks {
 class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
     std::string valor = pCharacteristic->getValue();
-    if (valor.length() > 0) {
+    if (valor.length() == 0) return;
+    String cmd = String(valor.c_str());
+
+    if (cmd.startsWith("TOL:")) {
+      // Formato: "TOL:postura,factorMin,factorMax,reposo"
+      int c1 = cmd.indexOf(',');
+      int c2 = cmd.indexOf(',', c1 + 1);
+      int c3 = cmd.indexOf(',', c2 + 1);
+
+      if (c1 > 0 && c2 > c1 && c3 > c2) {
+        tolPosturaGrados    = cmd.substring(4, c1).toFloat();
+        factorDuracionMin   = cmd.substring(c1 + 1, c2).toFloat();
+        factorDuracionMax   = cmd.substring(c2 + 1, c3).toFloat();
+        toleranciaReposoDeg = cmd.substring(c3 + 1).toFloat();
+
+        for (int i = 0; i < CANT_EJERCICIOS; i++) {
+          ejercicios[i].toleranciaPostura[0] = tolPosturaGrados;
+          ejercicios[i].toleranciaPostura[1] = tolPosturaGrados;
+        }
+        Serial.printf("[BLE-CONFIG] Tolerancias -> Postura:%.1f | Rapido:%.2f | Lento:%.2f | Reposo:%.1f\n",
+                      tolPosturaGrados, factorDuracionMin, factorDuracionMax, toleranciaReposoDeg);
+        enviarFeedbackBLE("Tolerancias actualizadas OK");
+      }
+    } else {
       codigo = atoi(valor.c_str());
       Serial.printf("[BLE] Comando recibido desde App: '%s' -> Codigo ejercicio = %d\n", valor.c_str(), codigo);
     }
@@ -909,7 +953,7 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
 void inicializarBLE() {
   Serial.println("[BLE] Iniciando servidor NimBLE 'Techeck_V2'...");
   NimBLEDevice::init("Techeck_V2");
-  NimBLEDevice::setMTU(128);
+  NimBLEDevice::setMTU(185);
   NimBLEDevice::setSecurityAuth(false, false, false);
 
   pServer = NimBLEDevice::createServer();
@@ -945,7 +989,7 @@ void Maq_General() {
       recibirPaquetesUDP();
       if (!ledEnHold) {
         if (aux1_ok) ledVerde();
-        else ledRojo();  // LED rojo fijo mientras no haya auxiliar conectado
+        else ledRojo();
       }
       if (millis() - tUltimoAvisoBLE > 3000) {
         if (aux1_ok) {
@@ -1001,9 +1045,19 @@ void Maq_General() {
 
     case ANALISIS_SERIE:
       if (!feedbackEnviado) {
-        resultadoValidacion = "BIEN: " + String(contadorBien) + " | MAL: " + String(contadorErrores);
+        float velMedia = (muestrasVelocidadSerie > 0) ? (sumaVelocidadSerie / muestrasVelocidadSerie) : 0.0;
+        String errores = obtenerDetalleErrores();
+        errores.replace("|", "-");
+
+        // Formato: RESUMEN|BIEN|MAL|VEL_MEDIA|RANGO_MAX|DETALLE
+        String resumenBLE = "RESUMEN|" + String(contadorBien) + "|" +
+                            String(contadorErrores) + "|" +
+                            String(velMedia, 1) + "|" +
+                            String(rangoMaximoSerie, 1) + "|" +
+                            errores;
+
         enviarDetenerAuxiliares(*ejercicioActual);
-        enviarFeedbackBLE(resultadoValidacion + " -> Toca boton");
+        enviarFeedbackBLE(resumenBLE);
         feedbackEnviado = true;
       }
       if (flagBoton) {
@@ -1113,14 +1167,12 @@ void setup() {
 }
 
 void loop() {
-  // Detectar si los ESP-01 se asocian a nivel Wi-Fi con el AP del ESP32-S3
   int estacionesActuales = WiFi.softAPgetStationNum();
   if (estacionesActuales != estacionesPrevias) {
     estacionesPrevias = estacionesActuales;
     Serial.printf("[WIFI-AP] Dispositivos Wi-Fi asociados al ESP32-S3: %d\n", estacionesActuales);
   }
 
-  // Reporte periodico de diagnostico cada 3 segundos
   if (millis() - tUltimoLogEstado >= 3000) {
     tUltimoLogEstado = millis();
     Serial.printf("[DIAG] AP_Stations:%d | BLE_Clients:%d | Aux1:%s (X:%.1f) | Aux2:%s (X:%.1f) | Local_X:%.1f\n",
