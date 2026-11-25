@@ -1,4 +1,4 @@
-// ESP32-S3 (Principal) - Modo Access Point propio + BLE Android/Motorola + Diagnóstico Serial
+// ESP32-S3 Super Mini (Principal) - Access Point propio + BLE Android/iOS + Memoria Flash NVS
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include <MPU6050.h>
@@ -7,6 +7,7 @@
 #include <WiFiUdp.h>
 #include <Ticker.h>
 #include <NimBLEDevice.h>
+#include <Preferences.h>
 #include "I2Cdev.h"
 
 const bool MODO_DESARROLLO = true;
@@ -37,10 +38,12 @@ Ejercicio ejercicios[CANT_EJERCICIOS] = {
 Ejercicio* ejercicioActual = &ejercicios[0];
 
 // ============================================================
-// HARDWARE Y RED (ACCESS POINT EN ESP32-S3)
+// HARDWARE, RED Y MEMORIA PERMANENTE (ESP32-S3 SUPER MINI)
 // ============================================================
 MPU6050 sensor;
 WiFiUDP udp;
+Preferences preferencias;
+
 const uint16_t PuertoUDP = 8888;
 IPAddress ipAux1(0, 0, 0, 0);
 IPAddress ipAux2(0, 0, 0, 0);
@@ -904,11 +907,11 @@ void resetearSerie() {
 }
 
 // ============================================================
-// BLE COMPATIBLE CON ANDROID Y MOTOROLA
+// BLE COMPATIBLE CON ANDROID E iOS
 // ============================================================
 class MiServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
-    Serial.println("[BLE] Celular Android/Motorola CONECTADO!");
+    Serial.println("[BLE] Celular CONECTADO!");
     pServer->updateConnParams(connInfo.getConnHandle(), 12, 24, 0, 100);
   }
   void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
@@ -939,9 +942,16 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
           ejercicios[i].toleranciaPostura[0] = tolPosturaGrados;
           ejercicios[i].toleranciaPostura[1] = tolPosturaGrados;
         }
-        Serial.printf("[BLE-CONFIG] Tolerancias -> Postura:%.1f | Rapido:%.2f | Lento:%.2f | Reposo:%.1f\n",
+
+        // Guardar permanentemente en la memoria Flash NVS del ESP32-S3
+        preferencias.putFloat("tolPost", tolPosturaGrados);
+        preferencias.putFloat("facMin", factorDuracionMin);
+        preferencias.putFloat("facMax", factorDuracionMax);
+        preferencias.putFloat("tolRep", toleranciaReposoDeg);
+
+        Serial.printf("[BLE-CONFIG] Guardado en Flash -> Postura:%.1f | Rapido:%.2f | Lento:%.2f | Reposo:%.1f\n",
                       tolPosturaGrados, factorDuracionMin, factorDuracionMax, toleranciaReposoDeg);
-        enviarFeedbackBLE("Tolerancias actualizadas OK");
+        enviarFeedbackBLE("Tolerancias guardadas OK");
       }
     } else {
       codigo = atoi(valor.c_str());
@@ -978,7 +988,7 @@ void inicializarBLE() {
   pAdvertising->setScanResponseData(scanData);
 
   pAdvertising->start();
-  Serial.println("[BLE] Visible y anunciando para dispositivos Android/Motorola.");
+  Serial.println("[BLE] Visible y anunciando para dispositivos Android/iOS.");
 }
 
 unsigned long tUltimoAvisoBLE = 0;
@@ -1133,6 +1143,19 @@ void setup() {
   delay(50);
   ledAmarillo();
   delay(2000);
+
+  // Cargar tolerancias guardadas en memoria Flash NVS (si es la primera vez, usa valores por defecto)
+  preferencias.begin("techeck", false);
+  tolPosturaGrados    = preferencias.getFloat("tolPost", 11.0);
+  factorDuracionMin   = preferencias.getFloat("facMin", 0.4);
+  factorDuracionMax   = preferencias.getFloat("facMax", 3.5);
+  toleranciaReposoDeg = preferencias.getFloat("tolRep", 7.0);
+  for (int i = 0; i < CANT_EJERCICIOS; i++) {
+    ejercicios[i].toleranciaPostura[0] = tolPosturaGrados;
+    ejercicios[i].toleranciaPostura[1] = tolPosturaGrados;
+  }
+  Serial.printf("[MEMORIA] Tolerancias cargadas -> Postura:%.1f | Rapido:%.2f | Lento:%.2f | Reposo:%.1f\n",
+                tolPosturaGrados, factorDuracionMin, factorDuracionMax, toleranciaReposoDeg);
 
   Serial.println("[I2C] Iniciando MPU6050 local (SDA=44, SCL=1)...");
   Wire.begin(44, 1);
