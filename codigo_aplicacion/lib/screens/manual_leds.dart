@@ -32,6 +32,11 @@ class ManualLeds extends StatelessWidget {
               onTap: () => context.push('/rutinas'),
             ),
             ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Configuraciones'),
+              onTap: () => context.push('/configuraciones'),
+            ),
+            ListTile(
               leading: const Icon(Icons.bar_chart),
               title: const Text('Estadísticas'),
               onTap: () => context.push('/estadisticas'),
@@ -39,7 +44,7 @@ class ManualLeds extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.lightbulb),
               title: const Text('Guía de LEDs'),
-              onTap: () => context.push('/manual_leds'),
+              onTap: () => Navigator.pop(context),
             ),
           ],
         ),
@@ -63,8 +68,6 @@ class ManualLeds extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
-
-          // Tarjeta VERDE
           _buildLedCard(
             color: Colors.greenAccent.shade400,
             titulo: 'VERDE',
@@ -73,10 +76,7 @@ class ManualLeds extends StatelessWidget {
                 'Indica que la repetición que hiciste estuvo bien ejecutada, respetando la postura y el tiempo adecuado. También se ilumina cuando el sistema está listo para comenzar.',
             icono: Icons.check_circle_outline,
           ),
-
           const SizedBox(height: 16),
-
-          // Tarjeta ROJA
           _buildLedCard(
             color: Colors.redAccent.shade400,
             titulo: 'ROJO',
@@ -85,10 +85,7 @@ class ManualLeds extends StatelessWidget {
                 'Indica que la repetición tuvo un error: te desviaste de la postura correcta, hiciste el movimiento demasiado rápido o excediste el tiempo límite.',
             icono: Icons.cancel_outlined,
           ),
-
           const SizedBox(height: 16),
-
-          // Tarjeta AMARILLA
           _buildLedCard(
             color: Colors.amberAccent.shade400,
             titulo: 'AMARILLO',
