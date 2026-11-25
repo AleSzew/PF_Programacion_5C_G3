@@ -13,11 +13,11 @@ class Ejercicios extends StatelessWidget {
       ),
       drawer: Drawer(
         child: ListView(
-          padding: EdgeInsets.all(5),
+          padding: const EdgeInsets.all(5),
           children: [
-             DrawerHeader(
+            DrawerHeader(
               decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
-              child: Text(
+              child: const Text(
                 'Menú de navegación',
                 style: TextStyle(color: Colors.white, fontSize: 20),
               ),
@@ -25,23 +25,22 @@ class Ejercicios extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.home),
               title: const Text('Inicio'),
-              onTap: () {
-                context.push('/homescreen');
-              },
+              onTap: () => context.push('/homescreen'),
             ),
             ListTile(
               leading: const Icon(Icons.fitness_center),
               title: const Text('Rutinas'),
-              onTap: () {
-                context.push('/rutinas');
-              },
+              onTap: () => context.push('/rutinas'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Configuraciones'),
+              onTap: () => context.push('/configuraciones'),
             ),
             ListTile(
               leading: const Icon(Icons.bar_chart),
               title: const Text('Estadísticas'),
-              onTap: () {
-                context.push('/estadisticas');
-              },
+              onTap: () => context.push('/estadisticas'),
             ),
           ],
         ),
