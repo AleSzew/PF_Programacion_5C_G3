@@ -64,13 +64,10 @@ class _InfousersState extends State<Infousers> {
 
     context.pop();
   }
+
   void _mostrarSelectorEdad() {
     final edades = [for (var i = 13; i <= 120; i++) i];
-
-    // Leemos el TextField. Si no hay nada, por defecto usa 13.
     int edadActual = int.tryParse(ageController.text) ?? 13;
-    
-    // Vemos en qué posición de la lista está ese número. Si da error, va a la posición 0.
     int indiceInicial = edades.indexOf(edadActual);
     if (indiceInicial == -1) indiceInicial = 0;
 
@@ -102,6 +99,7 @@ class _InfousersState extends State<Infousers> {
       },
     );
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -110,9 +108,9 @@ class _InfousersState extends State<Infousers> {
         child: ListView(
           padding: const EdgeInsets.all(5),
           children: [
-             DrawerHeader(
+            DrawerHeader(
               decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
-              child: Text(
+              child: const Text(
                 "Menú de navegación",
                 style: TextStyle(color: Colors.white, fontSize: 20),
               ),
@@ -128,10 +126,15 @@ class _InfousersState extends State<Infousers> {
               onTap: () => context.push('/rutinas'),
             ),
             ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text("Configuraciones"),
+              onTap: () => context.push('/configuraciones'),
+            ),
+            ListTile(
               leading: const Icon(Icons.bar_chart),
               title: const Text("Estadísticas"),
               onTap: () => context.push('/estadisticas'),
-            ),           
+            ),
           ],
         ),
       ),
@@ -146,11 +149,11 @@ class _InfousersState extends State<Infousers> {
             ),
             TextField(
               controller: ageController,
-              readOnly: true, // <-- ¡Clave! Bloquea el teclado de Chrome/celular
-              onTap: _mostrarSelectorEdad, // <-- ¡Clave! Hace que se abra tu panel
+              readOnly: true,
+              onTap: _mostrarSelectorEdad,
               decoration: const InputDecoration(
                 labelText: "Edad",
-                suffixIcon: Icon(Icons.arrow_drop_down), // Una flechita para que se entienda que es un menú
+                suffixIcon: Icon(Icons.arrow_drop_down),
               ),
             ),
             TextField(
