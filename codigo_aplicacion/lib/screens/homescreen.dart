@@ -15,15 +15,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.primary,
-        title: const Text("Bienvenido a Techeck",style: TextStyle(color: Colors.white)),
+        title: const Text("Bienvenido a Techeck", style: TextStyle(color: Colors.white)),
       ),
       drawer: Drawer(
         child: ListView(
           padding: const EdgeInsets.all(5),
           children: [
-             DrawerHeader(
+            DrawerHeader(
               decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
-              child: Text(
+              child: const Text(
                 "Menú de navegación",
                 style: TextStyle(color: Colors.white, fontSize: 20),
               ),
@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text("Inicio"),
               onTap: () => context.push('/homescreen'),
             ),
-                        ListTile(
+            ListTile(
               leading: const Icon(Icons.lightbulb),
               title: const Text("Guía de LEDs"),
               onTap: () => context.push('/manual_leds'),
@@ -42,6 +42,11 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.fitness_center),
               title: const Text("Rutinas"),
               onTap: () => context.push('/rutinas'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text("Configuraciones"),
+              onTap: () => context.push('/configuraciones'),
             ),
             ListTile(
               leading: const Icon(Icons.bar_chart),
@@ -63,36 +68,41 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Center(
-              child: ElevatedButton(
-                onPressed: () => context.push('/rutinas'),
-                child: const Text(
-                  "Nueva Rutina",
-                ),
-              ),
-            
+            child: ElevatedButton(
+              onPressed: () => context.push('/rutinas'),
+              child: const Text("Nueva Rutina"),
+            ),
           ),
-          SizedBox(height: 10,),
+          const SizedBox(height: 10),
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: () => context.push('/configuraciones'),
+              icon: const Icon(Icons.tune),
+              label: const Text("Configuraciones"),
+            ),
+          ),
+          const SizedBox(height: 10),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20), // Margen a los costados
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: SizedBox(
-              width: double.infinity, // Toma todo el ancho disponible respetando el padding
+              width: double.infinity,
               child: ElevatedButton(
                 onPressed: () async {
                   await context.push('/infousers');
                   setState(() {});
                 },
                 child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12), // Margen interno para que no quede tan aplastado
+                  padding: EdgeInsets.symmetric(vertical: 12),
                   child: Text(
                     "Por favor complete su peso y valores aquí",
-                    textAlign: TextAlign.center, // Centramos el texto por las dudas
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ),
             ),
-          )
+          ),
         ],
-      )
+      ),
     );
   }
 }
