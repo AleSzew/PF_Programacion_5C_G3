@@ -1,6 +1,8 @@
 //NO BORRAR COMENTARIOS NUNCA
 import 'package:codigo_aplicacion/carrito_ejercicios.dart';
+import 'package:codigo_aplicacion/config_tolerancias.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:go_router/go_router.dart';
@@ -59,9 +61,59 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
   @override
   void dispose() {
     scanSub?.cancel();
-    notifySub
-        ?.cancel(); // Dejamos de actualizar la pantalla para no causar crasheos
+    notifySub?.cancel(); // Dejamos de actualizar la pantalla para no causar crasheos
     super.dispose();
+  }
+
+  void _mostrarResumenSerie(
+      String bien, String mal, String velMedia, String rangoMax, String detalle) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E2A38),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.emoji_events, color: Color(0xFFD4AF37)),
+            SizedBox(width: 8),
+            Text('Resumen de la Serie', style: TextStyle(color: Color(0xFFD4AF37))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('✅ Repeticiones correctas: $bien', style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 6),
+            Text('❌ Repeticiones con error: $mal', style: const TextStyle(fontSize: 16)),
+            const Divider(color: Colors.white24, height: 20),
+            Text(
+              '⚡ Velocidad media: $velMedia °/s',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '📐 Rango de movimiento máx.: $rangoMax°',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Observación: $detalle',
+              style: const TextStyle(fontSize: 14, color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _listenToCharacteristic() {
@@ -72,7 +124,26 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
           (data) {
             if (!mounted) return;
 
-            final message = String.fromCharCodes(data);
+            final message = utf8.decode(data, allowMalformed: true);
+
+            if (message.startsWith("RESUMEN|")) {
+              final partes = message.split("|");
+              if (partes.length >= 6) {
+                setState(() {
+                  feedback = "Serie finalizada (BIEN: ${partes[1]} | MAL: ${partes[2]})";
+                  status = "Conectado";
+                });
+                _mostrarResumenSerie(
+                  partes[1],
+                  partes[2],
+                  partes[3],
+                  partes[4],
+                  partes[5],
+                );
+                return;
+              }
+            }
+
             setState(() {
               feedback = message;
               status = "Conectado";
@@ -160,6 +231,16 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
             if (update.connectionState == DeviceConnectionState.connected) {
               yaEstaConectado = true;
 
+              // Solicitar MTU mayor para evitar que Android corte mensajes a 20 caracteres
+              try {
+                await flutterReactiveBleGlobal.requestMtu(
+                  deviceId: device.id,
+                  mtu: 185,
+                );
+              } catch (e) {
+                debugPrint("No se pudo negociar MTU: $e");
+              }
+
               caracteristicaGlobal = QualifiedCharacteristic(
                 deviceId: device.id,
                 serviceId: serviceUuid,
@@ -175,6 +256,10 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
 
               // Espera 500 ms para que el servicio GATT se estabilice antes de enviar
               await Future.delayed(const Duration(milliseconds: 500));
+
+              // Sincroniza las tolerancias configuradas en la app
+              await ConfigTolerancias.sincronizarConESP32();
+              await Future.delayed(const Duration(milliseconds: 200));
 
               if (ejercicioSeleccionadoId.isNotEmpty && mounted) {
                 _sendCommand(ejercicioSeleccionadoId);
@@ -233,7 +318,7 @@ class _PantallaBluetoothState extends State<PantallaBluetooth> {
     try {
       await flutterReactiveBleGlobal.writeCharacteristicWithResponse(
         caracteristicaGlobal!,
-        value: command.codeUnits,
+        value: utf8.encode(command),
       );
       if (!mounted) return;
       setState(() {
