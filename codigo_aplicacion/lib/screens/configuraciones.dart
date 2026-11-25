@@ -40,15 +40,14 @@ class _ConfiguracionesState extends State<Configuraciones> {
       SnackBar(
         content: Text(
           exito
-              ? 'Todas las tolerancias guardadas en Techeck_V2'
-              : 'Error al enviar tolerancias por Bluetooth',
+              ? 'Configuraciones guardadas en Techeck_V2'
+              : 'Error al enviar configuraciones por Bluetooth',
         ),
         backgroundColor: exito ? Colors.green.shade700 : Colors.red.shade700,
       ),
     );
   }
 
-  // Permite escribir cualquier valor numérico exacto sin tope mínimo ni máximo
   Future<void> _editarValorManual({
     required String titulo,
     required String unidad,
@@ -78,7 +77,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
           ElevatedButton(
             onPressed: () {
               final parsed = double.tryParse(controller.text.replaceAll(',', '.'));
-              if (parsed != null && parsed > 0) {
+              if (parsed != null && parsed >= 0) {
                 onGuardar(parsed);
               }
               Navigator.pop(context);
@@ -155,7 +154,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
               title: Text(yaEstaConectado ? 'Conectado a Techeck_V2' : 'Bluetooth desconectado'),
               subtitle: Text(
                 yaEstaConectado
-                    ? 'Toca un número dorado para escribir cualquier valor exacto'
+                    ? 'Toca cualquier número dorado para escribir un valor exacto'
                     : 'Conecta el sensor para aplicar los cambios',
               ),
               trailing: yaEstaConectado
@@ -169,9 +168,27 @@ class _ConfiguracionesState extends State<Configuraciones> {
                     ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          _buildSeccion('Ángulos y Postura'),
+          _buildSeccion('Sensores'),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: SwitchListTile(
+              activeColor: const Color(0xFFD4AF37),
+              title: const Text(
+                'Exigir sensores auxiliares',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text(
+                'Desactívalo si un módulo auxiliar se quedó sin batería y quieres entrenar solo con el sensor principal.',
+                style: TextStyle(fontSize: 13, color: Colors.white70),
+              ),
+              value: ConfigTolerancias.requerirAuxiliares,
+              onChanged: (val) => setState(() => ConfigTolerancias.requerirAuxiliares = val),
+            ),
+          ),
+
+          _buildSeccion('Ángulos y Calibración'),
           _buildControlCard(
             titulo: 'Tolerancia de Desviación (Postura)',
             subtitulo: 'Ángulo máximo de desvío en espalda o codos antes de marcar error (desde 1°).',
@@ -185,7 +202,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
           ),
           _buildControlCard(
             titulo: 'Margen en Posición Inicial (Reposo)',
-            subtitulo: 'Grados de movimiento permitidos en descanso sin iniciar una repetición.',
+            subtitulo: 'Grados de movimiento permitidos en descanso sin disparar una repetición.',
             unidad: '°',
             valor: ConfigTolerancias.holguraReposo,
             sliderMin: 1.0,
@@ -196,7 +213,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
           ),
           _buildControlCard(
             titulo: 'Exceso de Recorrido Permitido',
-            subtitulo: 'Grados extra que puedes pasarte del límite grabado antes de marcar "Te pasaste".',
+            subtitulo: 'Grados extra permitidos por encima del límite calibrado antes de marcar "Te pasaste".',
             unidad: '°',
             valor: ConfigTolerancias.excesoRecorrido,
             sliderMin: 1.0,
@@ -205,9 +222,42 @@ class _ConfiguracionesState extends State<Configuraciones> {
             decimales: 0,
             onChanged: (val) => setState(() => ConfigTolerancias.excesoRecorrido = val),
           ),
+          _buildControlCard(
+            titulo: 'Amplitud Mínima para Calibración',
+            subtitulo: 'Ángulo mínimo que debe tener la repetición de muestra (bájalo a 3°-5° para ejercicios cortos).',
+            unidad: '°',
+            valor: ConfigTolerancias.amplitudMinCalib,
+            sliderMin: 2.0,
+            sliderMax: 40.0,
+            divisiones: 38,
+            decimales: 0,
+            onChanged: (val) => setState(() => ConfigTolerancias.amplitudMinCalib = val),
+          ),
 
-          const SizedBox(height: 8),
-          _buildSeccion('Recorrido y Velocidad'),
+          const SizedBox(height: 6),
+          _buildSeccion('Umbrales de Movimiento'),
+          _buildControlCard(
+            titulo: 'Sensibilidad de Inicio de Repetición',
+            subtitulo: 'Porcentaje de recorrido necesario para detectar que arrancaste (evita falsos disparos).',
+            unidad: '%',
+            valor: ConfigTolerancias.sensibilidadInicioPct,
+            sliderMin: 5.0,
+            sliderMax: 80.0,
+            divisiones: 75,
+            decimales: 0,
+            onChanged: (val) => setState(() => ConfigTolerancias.sensibilidadInicioPct = val),
+          ),
+          _buildControlCard(
+            titulo: 'Sensibilidad de Retorno al Inicio',
+            subtitulo: 'Qué tan cerca de la posición inicial debes volver para cerrar la repetición.',
+            unidad: '%',
+            valor: ConfigTolerancias.sensibilidadRetornoPct,
+            sliderMin: 5.0,
+            sliderMax: 80.0,
+            divisiones: 75,
+            decimales: 0,
+            onChanged: (val) => setState(() => ConfigTolerancias.sensibilidadRetornoPct = val),
+          ),
           _buildControlCard(
             titulo: 'Recorrido Mínimo Exigido',
             subtitulo: 'Porcentaje de la amplitud calibrada que debes alcanzar para que cuente como completa.',
@@ -219,9 +269,12 @@ class _ConfiguracionesState extends State<Configuraciones> {
             decimales: 0,
             onChanged: (val) => setState(() => ConfigTolerancias.rangoMinimoPct = val),
           ),
+
+          const SizedBox(height: 6),
+          _buildSeccion('Tiempos y Velocidad'),
           _buildControlCard(
             titulo: 'Control de Velocidad (Anti-impulso)',
-            subtitulo: 'Exigencia contra repeticiones hechas demasiado rápido.',
+            subtitulo: 'Exigencia relativa contra repeticiones hechas demasiado rápido.',
             unidad: '%',
             valor: ConfigTolerancias.controlImpulsoPct,
             sliderMin: 5.0,
@@ -229,6 +282,17 @@ class _ConfiguracionesState extends State<Configuraciones> {
             divisiones: 90,
             decimales: 0,
             onChanged: (val) => setState(() => ConfigTolerancias.controlImpulsoPct = val),
+          ),
+          _buildControlCard(
+            titulo: 'Duración Mínima Absoluta de Repetición',
+            subtitulo: 'Tiempo mínimo estricto (en milisegundos) por debajo del cual siempre se marca "Muy rápido".',
+            unidad: 'ms',
+            valor: ConfigTolerancias.duracionMinAbsolutaMs.toDouble(),
+            sliderMin: 50.0,
+            sliderMax: 2000.0,
+            divisiones: 39,
+            decimales: 0,
+            onChanged: (val) => setState(() => ConfigTolerancias.duracionMinAbsolutaMs = val.round()),
           ),
           _buildControlCard(
             titulo: 'Tiempo Máximo por Repetición',
@@ -241,19 +305,16 @@ class _ConfiguracionesState extends State<Configuraciones> {
             decimales: 1,
             onChanged: (val) => setState(() => ConfigTolerancias.tiempoMaxRep = val),
           ),
-
-          const SizedBox(height: 8),
-          _buildSeccion('Estabilidad e Inactividad'),
           _buildControlCard(
-            titulo: 'Tolerancia a Temblor / Brusquedad',
-            subtitulo: 'Permisividad ante vibraciones o zigzagueos durante la ejecución (mayor = más permisivo).',
-            unidad: '',
-            valor: ConfigTolerancias.toleranciaTemblor,
-            sliderMin: 1.0,
-            sliderMax: 6.0,
-            divisiones: 50,
-            decimales: 1,
-            onChanged: (val) => setState(() => ConfigTolerancias.toleranciaTemblor = val),
+            titulo: 'Descanso Mínimo entre Repeticiones',
+            subtitulo: 'Pausa obligatoria en milisegundos entre una repetición y la siguiente.',
+            unidad: 'ms',
+            valor: ConfigTolerancias.tiempoMinEntreRepsMs.toDouble(),
+            sliderMin: 100.0,
+            sliderMax: 3000.0,
+            divisiones: 29,
+            decimales: 0,
+            onChanged: (val) => setState(() => ConfigTolerancias.tiempoMinEntreRepsMs = val.round()),
           ),
           _buildControlCard(
             titulo: 'Tiempo Máximo de Inactividad',
@@ -266,9 +327,23 @@ class _ConfiguracionesState extends State<Configuraciones> {
             decimales: 1,
             onChanged: (val) => setState(() => ConfigTolerancias.tiempoInactividad = val),
           ),
+
+          const SizedBox(height: 6),
+          _buildSeccion('Estabilidad y Confirmación de Errores'),
+          _buildControlCard(
+            titulo: 'Tolerancia a Temblor / Brusquedad',
+            subtitulo: 'Permisividad ante vibraciones o zigzagueos durante la ejecución.',
+            unidad: '',
+            valor: ConfigTolerancias.toleranciaTemblor,
+            sliderMin: 1.0,
+            sliderMax: 6.0,
+            divisiones: 50,
+            decimales: 1,
+            onChanged: (val) => setState(() => ConfigTolerancias.toleranciaTemblor = val),
+          ),
           _buildControlCard(
             titulo: 'Tolerancia a Retroceso / Tirones',
-            subtitulo: 'Velocidad en sentido contrario permitida antes de marcar error de dirección.',
+            subtitulo: 'Velocidad en sentido contrario permitida antes de detectar error de dirección.',
             unidad: '°/s',
             valor: ConfigTolerancias.toleranciaRetroceso,
             sliderMin: 1.0,
@@ -276,6 +351,39 @@ class _ConfiguracionesState extends State<Configuraciones> {
             divisiones: 59,
             decimales: 0,
             onChanged: (val) => setState(() => ConfigTolerancias.toleranciaRetroceso = val),
+          ),
+          _buildControlCard(
+            titulo: 'Confirmación Error de Postura',
+            subtitulo: 'Cantidad de muestras seguidas (1 muestra = 0.1s) fuera de postura para marcar error.',
+            unidad: ' muestras',
+            valor: ConfigTolerancias.muestrasConfirmPostura.toDouble(),
+            sliderMin: 1.0,
+            sliderMax: 15.0,
+            divisiones: 14,
+            decimales: 0,
+            onChanged: (val) => setState(() => ConfigTolerancias.muestrasConfirmPostura = val.round()),
+          ),
+          _buildControlCard(
+            titulo: 'Confirmación Error de Velocidad/Tirones',
+            subtitulo: 'Muestras seguidas (1 muestra = 0.1s) en sentido inverso para marcar error.',
+            unidad: ' muestras',
+            valor: ConfigTolerancias.muestrasConfirmVel.toDouble(),
+            sliderMin: 1.0,
+            sliderMax: 15.0,
+            divisiones: 14,
+            decimales: 0,
+            onChanged: (val) => setState(() => ConfigTolerancias.muestrasConfirmVel = val.round()),
+          ),
+          _buildControlCard(
+            titulo: 'Confirmación Exceso de Recorrido',
+            subtitulo: 'Muestras seguidas (1 muestra = 0.1s) fuera del límite calibrado para marcar error.',
+            unidad: ' muestras',
+            valor: ConfigTolerancias.muestrasConfirmRango.toDouble(),
+            sliderMin: 1.0,
+            sliderMax: 15.0,
+            divisiones: 14,
+            decimales: 0,
+            onChanged: (val) => setState(() => ConfigTolerancias.muestrasConfirmRango = val.round()),
           ),
 
           const SizedBox(height: 16),
@@ -318,7 +426,6 @@ class _ConfiguracionesState extends State<Configuraciones> {
     required int decimales,
     required ValueChanged<double> onChanged,
   }) {
-    // Asegura que el slider no falle si el usuario escribió un número fuera de su rango visual
     double valorSlider = valor.clamp(sliderMin, sliderMax);
 
     return Card(
@@ -357,7 +464,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
                         Text(
                           '${valor.toStringAsFixed(decimales)}$unidad',
                           style: const TextStyle(
-                            fontSize: 16,
+                            fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFFD4AF37),
                           ),
