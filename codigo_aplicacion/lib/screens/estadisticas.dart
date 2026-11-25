@@ -9,9 +9,8 @@ class Estadisticas extends StatefulWidget {
 }
 
 class _EstadisticasState extends State<Estadisticas> {
-  // Datos simulados
   int ejerciciosCompletados = 12;
-  double progresoRutina = 0.65; // 65%
+  double progresoRutina = 0.65;
   List<int> caloriasSemana = [300, 450, 500, 200, 600, 700, 400];
 
   @override
@@ -38,9 +37,14 @@ class _EstadisticasState extends State<Estadisticas> {
               onTap: () => context.push('/rutinas'),
             ),
             ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text("Configuraciones"),
+              onTap: () => context.push('/configuraciones'),
+            ),
+            ListTile(
               leading: const Icon(Icons.bar_chart),
               title: const Text("Estadísticas"),
-              onTap: () => context.push('/estadisticas'),
+              onTap: () => Navigator.pop(context),
             ),
           ],
         ),
@@ -49,7 +53,6 @@ class _EstadisticasState extends State<Estadisticas> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Contador simple
             Card(
               child: ListTile(
                 leading: const Icon(Icons.check_circle, color: Colors.green),
@@ -58,8 +61,6 @@ class _EstadisticasState extends State<Estadisticas> {
               ),
             ),
             const SizedBox(height: 10),
-
-            // Barra de progreso
             Card(
               child: ListTile(
                 leading: const Icon(Icons.fitness_center, color: Colors.blue),
@@ -69,8 +70,6 @@ class _EstadisticasState extends State<Estadisticas> {
               ),
             ),
             const SizedBox(height: 10),
-
-            // Lista de calorías por día
             Expanded(
               child: Card(
                 child: Column(
