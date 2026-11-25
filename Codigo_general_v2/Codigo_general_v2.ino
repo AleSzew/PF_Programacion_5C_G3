@@ -1,4 +1,4 @@
-// ESP32-S3 Super Mini (Principal) - Access Point propio + BLE Android/iOS + Memoria Flash NVS
+// ESP32-S3 Super Mini (Principal) - Access Point propio + BLE Android/iOS + Memoria Flash NVS (17 parámetros)
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include <MPU6050.h>
@@ -62,8 +62,6 @@ Ticker timerMedicion;
 const char* ssid = "ESP32_C3_Server";
 const char* password = "GRUPO3XX";
 
-bool REQUERIR_AUXILIARES = true;
-
 // ============================================================
 // ESTADOS
 // ============================================================
@@ -111,17 +109,26 @@ float velocidadPrincipal = 0;
 const float ALPHA_VEL = 0.3;
 
 // ============================================================
-// TOLERANCIAS CONFIGURABLES POR BLE (9 PARÁMETROS) Y RESUMEN
+// TOLERANCIAS CONFIGURABLES POR BLE (17 PARÁMETROS) Y RESUMEN
 // ============================================================
-float tolPosturaGrados = 11.0;          // 1. Desviación máxima postura (°)
-float toleranciaReposoDeg = 7.0;        // 2. Margen en posición inicial (°)
-float tolExcesoGrados = 10.0;           // 3. Exceso de recorrido permitido (°)
-float umbralPico = 0.45;                // 4. Rango mínimo exigido (0.10 a 1.00)
-float factorDuracionMin = 0.40;         // 5. Factor tiempo mínimo (muy rápido)
-float factorDuracionMax = 3.50;         // 6. Factor tiempo máximo (muy lento)
-float ratioSuavidadMax = 2.0;           // 7. Tolerancia temblor / brusquedad
-unsigned long tiempoMaxInactividadMs = 4500; // 8. Tiempo máx inactividad (ms)
-float toleranciaVelDps = 20.0;          // 9. Velocidad inversa permitida (°/s)
+float tolPosturaGrados = 11.0;               // 0: Desviación máxima postura (°)
+float toleranciaReposoDeg = 7.0;             // 1: Margen en posición inicial (°)
+float tolExcesoGrados = 10.0;                // 2: Exceso de recorrido permitido (°)
+float umbralPico = 0.45;                     // 3: Rango mínimo exigido (0.05 a 1.00)
+float factorDuracionMin = 0.40;              // 4: Factor tiempo mínimo (muy rápido)
+float factorDuracionMax = 3.50;              // 5: Factor tiempo máximo (muy lento)
+float ratioSuavidadMax = 2.0;                // 6: Tolerancia temblor / brusquedad
+unsigned long tiempoMaxInactividadMs = 4500; // 7: Tiempo máx inactividad (ms)
+float toleranciaVelDps = 20.0;               // 8: Velocidad inversa permitida (°/s)
+float umbralSalida = 0.30;                   // 9: Sensibilidad inicio de rep (0.05 a 0.90)
+float umbralRetorno = 0.35;                  // 10: Sensibilidad retorno al inicio (0.05 a 0.90)
+unsigned long tMinEntreRepsMs = 800;         // 11: Descanso mínimo entre reps (ms)
+float amplitudMinCalibDeg = 10.0;            // 12: Amplitud mínima calibración (°)
+unsigned long duracionMinAbsolutaMs = 200;   // 13: Duración mínima absoluta de rep (ms)
+int muestrasConfirmPostura = 2;              // 14: Muestras confirmación postura (x100ms)
+int muestrasConfirmVel = 4;                  // 15: Muestras confirmación velocidad (x100ms)
+int muestrasConfirmRango = 5;                // 16: Muestras confirmación exceso recorrido (x100ms)
+bool requerirAuxiliares = true;              // 17: Exigir sensores auxiliares conectados
 
 float sumaVelocidadSerie = 0;
 unsigned long muestrasVelocidadSerie = 0;
@@ -146,15 +153,10 @@ int direccionMovimiento = 1;
 float picoAlcanzado = 0;
 
 const float ALPHA_BASE_REPOSO = 0.02;
-const float UMBRAL_SALIDA = 0.30;
-const float UMBRAL_RETORNO = 0.35;
 const int MUESTRAS_CONFIRMACION = 3;
 
 unsigned long tFinUltimaRep = 0;
-const unsigned long T_MIN_ENTRE_REPS = 800;
-
 unsigned long duracionCalibrada = 1500;
-const unsigned long T_MIN = 200;
 
 int contadorRetorno = 0;
 int contadorErrorVelocidad = 0;
@@ -169,9 +171,6 @@ float recorrido = 0;
 
 int contadorErrorRango = 0;
 int contadorErrorPostura = 0;
-const int MUESTRAS_CONFIRM_RANGO = 5;
-const int MUESTRAS_CONFIRM_POSTURA = 2;
-const int MUESTRAS_CONFIRM_VEL = 4;
 
 int errExceso = 0;
 int errTemblor = 0;
@@ -401,7 +400,7 @@ float progreso(float v) {
 }
 
 // ============================================================
-// RED Y AUXILIARES (IPs ESTÁTICAS 192.168.4.2 y 192.168.4.3)
+// RED Y AUXILIARES
 // ============================================================
 void recibirPaquetesUDP() {
   int packetSize = udp.parsePacket();
@@ -532,6 +531,11 @@ void enviarDetenerAuxiliares(Ejercicio& ej) {
 }
 
 bool iniciarMedicionEnAuxiliares(Ejercicio& ej) {
+  if (!requerirAuxiliares) {
+    enviarComandoUDPAuxiliares("INICIAR", ej);
+    return true;
+  }
+
   bool necesitaAux1 = true;
   bool necesitaAux2 = sensorUsado(ej, 2);
 
@@ -588,7 +592,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       if (ej.sensorPostura[p] != 99) reposoPostura[p] /= muestras;
   }
 
-  Serial.printf("[CALIB] Reposo base: %.2f deg. Fase 2: Hace 1 rep lenta...\n", reposoValor);
+  Serial.printf("[CALIB] Reposo base: %.2f deg. Fase 2: Hace 1 rep lenta (min %.1f deg)...\n", reposoValor, amplitudMinCalibDeg);
   enviarFeedbackBLE("Hace 1 rep lenta para grabar");
 
   float minV = reposoValor, maxV = reposoValor;
@@ -603,12 +607,13 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   float velCalibracion = 0;
   float anguloAnterior = reposoValor;
   unsigned long tAnterior = millis();
+  float umbralSalidaCalib = min(5.0f, amplitudMinCalibDeg * 0.5f);
 
   while (true) {
     unsigned long ahora = millis();
 
     if (ahora - inicio > duracionMaximaMs) {
-      if (amplitudMax >= 10.0) retornoCompletado = true;
+      if (amplitudMax >= amplitudMinCalibDeg) retornoCompletado = true;
       break;
     }
 
@@ -626,7 +631,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       tAnterior = ahora;
     }
 
-    if (!salioDeReposo && distancia >= 5.0) {
+    if (!salioDeReposo && distancia >= umbralSalidaCalib) {
       salioDeReposo = true;
       tInicioMovCalib = ahora;
     }
@@ -641,7 +646,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
       if (d > lateralMax[p]) lateralMax[p] = d;
     }
 
-    if (salioDeReposo && amplitudMax >= 10.0 && (ahora - tInicioMovCalib) >= 1500) {
+    if (salioDeReposo && amplitudMax >= amplitudMinCalibDeg && (ahora - tInicioMovCalib) >= 1500) {
       if (distancia <= (amplitudMax * 0.45) || (distancia < (amplitudMax * 0.8) && velCalibracion < 5.0)) {
         tRetornoCalib = ahora;
         retornoCompletado = true;
@@ -653,7 +658,7 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
     yield();
   }
 
-  if (!retornoCompletado || amplitudMax < 10.0) {
+  if (!retornoCompletado || amplitudMax < amplitudMinCalibDeg) {
     Serial.println("[CALIB] ERROR: Repeticion no detectada (amplitud insuficiente).");
     enviarFeedbackBLE("Err: Repeticion no detectada");
     return false;
@@ -669,7 +674,6 @@ bool calibrarEjercicio(Ejercicio& ej, unsigned long duracionMaximaMs) {
   for (int p = 0; p < 2; p++) {
     if (ej.sensorPostura[p] == 99) continue;
     ej.centroPostura[p] = reposoPostura[p];
-    // Se respeta exactamente la tolerancia configurada por el usuario (sin límite mínimo de 6°)
     ej.toleranciaPostura[p] = tolPosturaGrados;
   }
   duracionCalibrada = max(500UL, tRetornoCalib - tInicioMovCalib);
@@ -700,7 +704,7 @@ int sensorPosturaFallido(Ejercicio& ej, bool& caido) {
     uint8_t s = ej.sensorPostura[i];
     if (s == 99) continue;
     if ((s == 1 && !aux1_ok) || (s == 2 && !aux2_ok)) {
-      if (!REQUERIR_AUXILIARES) continue;
+      if (!requerirAuxiliares) continue;
       caido = true;
       return s;
     }
@@ -731,7 +735,7 @@ void cerrarRepeticion(const String& resultado, TipoError tipo, int sensorId) {
 }
 
 void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
-  if (!aux1_ok || (sensorUsado(ej, 2) && !aux2_ok)) {
+  if (requerirAuxiliares && (!aux1_ok || (sensorUsado(ej, 2) && !aux2_ok))) {
     registrarError(ERR_DESCONEXION, (!aux1_ok) ? 1 : 2);
     mostrarResultadoLed(false);
     enviarDetenerAuxiliares(ej);
@@ -758,7 +762,7 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
       if (fabs(v - baseLocal) < toleranciaReposoDeg) baseLocal = ALPHA_BASE_REPOSO * v + (1 - ALPHA_BASE_REPOSO) * baseLocal;
       if (fabs(v - baseLocal) < (toleranciaReposoDeg + 1.0)) tUltimoDentroReposo = millis();
 
-      if (p < UMBRAL_RETORNO || fabs(v - baseLocal) <= toleranciaReposoDeg) {
+      if (p < umbralRetorno || fabs(v - baseLocal) <= toleranciaReposoDeg) {
         esperandoRetornoAInicio = false;
         avisoRetornoEnviado = false;
       } else if (esperandoRetornoAInicio && !avisoRetornoEnviado && (millis() - tFinUltimaRep > 4000)) {
@@ -766,7 +770,7 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
         avisoRetornoEnviado = true;
       }
 
-      if (!esperandoRetornoAInicio && p >= UMBRAL_SALIDA && (millis() - tFinUltimaRep > T_MIN_ENTRE_REPS)) {
+      if (!esperandoRetornoAInicio && p >= umbralSalida && (millis() - tFinUltimaRep > tMinEntreRepsMs)) {
         faseRep = EN_MOVIMIENTO;
         subFaseRep = SUBIENDO;
         tInicioRep = (millis() - tUltimoDentroReposo < 1500) ? tUltimoDentroReposo : millis();
@@ -825,15 +829,15 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
         resultado = "MAL (Inactivo o vibrando)";
         tipo = ERR_INACTIVO;
         sensorFallido = ej.sensorPrincipal;
-      } else if (contadorErrorRango >= MUESTRAS_CONFIRM_RANGO) {
+      } else if (contadorErrorRango >= muestrasConfirmRango) {
         resultado = "MAL (te pasaste del recorrido)";
         tipo = ERR_EXCESO;
         sensorFallido = ej.sensorPrincipal;
-      } else if (contadorErrorVelocidad >= MUESTRAS_CONFIRM_VEL) {
+      } else if (contadorErrorVelocidad >= muestrasConfirmVel) {
         resultado = "MAL (sentido incorrecto)";
         tipo = ERR_VELOCIDAD;
         sensorFallido = ej.sensorPrincipal;
-      } else if (contadorErrorPostura >= MUESTRAS_CONFIRM_POSTURA) {
+      } else if (contadorErrorPostura >= muestrasConfirmPostura) {
         if (caido) {
           resultado = "MAL (sensor desconectado)";
           tipo = ERR_DESCONEXION;
@@ -842,11 +846,11 @@ void evaluarRepeticion(Ejercicio& ej, float velocidadActual) {
           tipo = ERR_POSTURA;
         }
         sensorFallido = posturaFalla;
-      } else if (subFaseRep == BAJANDO && (p <= UMBRAL_RETORNO || fabs(v - baseLocal) <= toleranciaReposoDeg)) {
+      } else if (subFaseRep == BAJANDO && (p <= umbralRetorno || fabs(v - baseLocal) <= toleranciaReposoDeg)) {
         if (contadorRetorno == 0) tPrimerRetorno = millis();
         if (++contadorRetorno >= MUESTRAS_CONFIRMACION) {
           unsigned long duracion = tPrimerRetorno - tInicioRep;
-          unsigned long duracionMin = max(T_MIN, (unsigned long)(duracionCalibrada * factorDuracionMin));
+          unsigned long duracionMin = max(duracionMinAbsolutaMs, (unsigned long)(duracionCalibrada * factorDuracionMin));
           float idealGrados = ((picoAlcanzado - pInicioRep) + (picoAlcanzado - p)) * amplitudObjetivo;
           float ratio = (idealGrados > 1.0) ? (recorrido / idealGrados) : 1.0;
 
@@ -927,12 +931,12 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
     String cmd = String(valor.c_str());
 
     if (cmd.startsWith("TOL:")) {
-      // Formato: "TOL:postura,reposo,exceso,umbralPico,facMin,facMax,suavidad,inactMs,velDps"
+      // 18 valores separados por coma
       String datos = cmd.substring(4);
-      float vals[9];
+      float vals[18];
       int idx = 0;
       int inicio = 0;
-      while (idx < 9) {
+      while (idx < 18) {
         int coma = datos.indexOf(',', inicio);
         if (coma == -1) {
           vals[idx++] = datos.substring(inicio).toFloat();
@@ -943,7 +947,7 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
         }
       }
 
-      if (idx == 9) {
+      if (idx == 18) {
         tolPosturaGrados       = vals[0];
         toleranciaReposoDeg    = vals[1];
         tolExcesoGrados        = vals[2];
@@ -953,6 +957,15 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
         ratioSuavidadMax       = vals[6];
         tiempoMaxInactividadMs = (unsigned long)vals[7];
         toleranciaVelDps       = vals[8];
+        umbralSalida           = vals[9];
+        umbralRetorno          = vals[10];
+        tMinEntreRepsMs        = (unsigned long)vals[11];
+        amplitudMinCalibDeg    = vals[12];
+        duracionMinAbsolutaMs  = (unsigned long)vals[13];
+        muestrasConfirmPostura = max(1, (int)vals[14]);
+        muestrasConfirmVel     = max(1, (int)vals[15]);
+        muestrasConfirmRango   = max(1, (int)vals[16]);
+        requerirAuxiliares     = (vals[17] > 0.5);
 
         for (int i = 0; i < CANT_EJERCICIOS; i++) {
           ejercicios[i].toleranciaPostura[0] = tolPosturaGrados;
@@ -969,9 +982,18 @@ class MiCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
         preferencias.putFloat("suavMax", ratioSuavidadMax);
         preferencias.putULong("inactMs", tiempoMaxInactividadMs);
         preferencias.putFloat("velDps", toleranciaVelDps);
+        preferencias.putFloat("umbSal", umbralSalida);
+        preferencias.putFloat("umbRet", umbralRetorno);
+        preferencias.putULong("tEntre", tMinEntreRepsMs);
+        preferencias.putFloat("ampCal", amplitudMinCalibDeg);
+        preferencias.putULong("tMinAbs", duracionMinAbsolutaMs);
+        preferencias.putInt("mPost", muestrasConfirmPostura);
+        preferencias.putInt("mVel", muestrasConfirmVel);
+        preferencias.putInt("mRango", muestrasConfirmRango);
+        preferencias.putBool("reqAux", requerirAuxiliares);
 
-        Serial.printf("[BLE-CONFIG] 9 parametros guardados en Flash! Postura:%.1f deg | Reposo:%.1f deg | Exceso:%.1f deg | Pico:%.2f\n",
-                      tolPosturaGrados, toleranciaReposoDeg, tolExcesoGrados, umbralPico);
+        Serial.printf("[BLE-CONFIG] 18 parametros guardados en Flash! Aux:%s | Salida:%.2f | Retorno:%.2f\n",
+                      requerirAuxiliares ? "SI" : "NO", umbralSalida, umbralRetorno);
         enviarFeedbackBLE("Tolerancias guardadas OK");
       }
     } else {
@@ -1019,12 +1041,14 @@ void Maq_General() {
     case INICIALIZACION:
       recibirPaquetesUDP();
       if (!ledEnHold) {
-        if (aux1_ok) ledVerde();
+        if (aux1_ok || !requerirAuxiliares) ledVerde();
         else ledRojo();
       }
       if (millis() - tUltimoAvisoBLE > 3000) {
         if (aux1_ok) {
           enviarFeedbackBLE("Auxiliar OK. Toca boton");
+        } else if (!requerirAuxiliares) {
+          enviarFeedbackBLE("Modo sin auxiliar. Toca boton");
         } else {
           enviarFeedbackBLE("ERR: Sin auxiliar conectado");
         }
@@ -1165,7 +1189,7 @@ void setup() {
   ledAmarillo();
   delay(2000);
 
-  // Cargar los 9 parámetros guardados en memoria Flash NVS
+  // Cargar todos los parámetros guardados en memoria Flash NVS
   preferencias.begin("techeck", false);
   tolPosturaGrados       = preferencias.getFloat("tolPost", 11.0);
   toleranciaReposoDeg    = preferencias.getFloat("tolRep", 7.0);
@@ -1176,13 +1200,22 @@ void setup() {
   ratioSuavidadMax       = preferencias.getFloat("suavMax", 2.0);
   tiempoMaxInactividadMs = preferencias.getULong("inactMs", 4500);
   toleranciaVelDps       = preferencias.getFloat("velDps", 20.0);
+  umbralSalida           = preferencias.getFloat("umbSal", 0.30);
+  umbralRetorno          = preferencias.getFloat("umbRet", 0.35);
+  tMinEntreRepsMs        = preferencias.getULong("tEntre", 800);
+  amplitudMinCalibDeg    = preferencias.getFloat("ampCal", 10.0);
+  duracionMinAbsolutaMs  = preferencias.getULong("tMinAbs", 200);
+  muestrasConfirmPostura = preferencias.getInt("mPost", 2);
+  muestrasConfirmVel     = preferencias.getInt("mVel", 4);
+  muestrasConfirmRango   = preferencias.getInt("mRango", 5);
+  requerirAuxiliares     = preferencias.getBool("reqAux", true);
 
   for (int i = 0; i < CANT_EJERCICIOS; i++) {
     ejercicios[i].toleranciaPostura[0] = tolPosturaGrados;
     ejercicios[i].toleranciaPostura[1] = tolPosturaGrados;
   }
-  Serial.printf("[MEMORIA] Tolerancias cargadas -> Postura:%.1f | Reposo:%.1f | Exceso:%.1f | Pico:%.2f\n",
-                tolPosturaGrados, toleranciaReposoDeg, tolExcesoGrados, umbralPico);
+  Serial.printf("[MEMORIA] Tolerancias cargadas -> Postura:%.1f | Aux:%s | Salida:%.2f | Retorno:%.2f\n",
+                tolPosturaGrados, requerirAuxiliares ? "SI" : "NO", umbralSalida, umbralRetorno);
 
   Serial.println("[I2C] Iniciando MPU6050 local (SDA=44, SCL=1)...");
   Wire.begin(44, 1);
