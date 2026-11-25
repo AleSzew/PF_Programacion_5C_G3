@@ -35,11 +35,11 @@ class _RutinasState extends State<Rutinas> {
       ),
       drawer: Drawer(
         child: ListView(
-          padding: EdgeInsets.all(5),
+          padding: const EdgeInsets.all(5),
           children: [
             DrawerHeader(
               decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
-              child: Text(
+              child: const Text(
                 'Menú de navegación',
                 style: TextStyle(color: Colors.white, fontSize: 20),
               ),
@@ -47,28 +47,27 @@ class _RutinasState extends State<Rutinas> {
             ListTile(
               leading: const Icon(Icons.home),
               title: const Text('Inicio'),
-              onTap: () {
-                context.push('/homescreen');
-              },
+              onTap: () => context.push('/homescreen'),
             ),
             ListTile(
               leading: const Icon(Icons.fitness_center),
               title: const Text('Rutinas'),
-              onTap: () {
-                context.push('/rutinas');
-              },
+              onTap: () => Navigator.pop(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Configuraciones'),
+              onTap: () => context.push('/configuraciones'),
             ),
             ListTile(
               leading: const Icon(Icons.bar_chart),
               title: const Text('Estadísticas'),
-              onTap: () {
-                context.push('/estadisticas');
-              },
+              onTap: () => context.push('/estadisticas'),
             ),
           ],
         ),
       ),
-      body: carrito.isEmpty //¿El carrito está vacío? (?) Muestra texto sino muestra la lista
+      body: carrito.isEmpty
           ? const Center(
               child: Text('No tienes ejercicios en tu rutina'),
             )
@@ -76,7 +75,6 @@ class _RutinasState extends State<Rutinas> {
               padding: const EdgeInsets.all(12),
               itemCount: carrito.length,
               itemBuilder: (BuildContext context, int indice) {
-                // Sacamos el ejercicio exacto de la posición actual (indice)
                 Map<String, String> ejercicio = carrito[indice];
                 String nombre = ejercicio['nombre']!;
                 String video = ejercicio['video']!;
@@ -98,7 +96,6 @@ class _RutinasState extends State<Rutinas> {
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            // Botón de Video - Texto centrado y escalado
                             Expanded(
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
@@ -112,15 +109,11 @@ class _RutinasState extends State<Rutinas> {
                                   }
                                 },
                                 child: const FittedBox(
-                                  
                                   child: Text('Video'),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
-
-
-                            // Botón "-" - Texto grande y escalado
                             Expanded(
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
@@ -129,7 +122,6 @@ class _RutinasState extends State<Rutinas> {
                                   setState(() {});
                                 },
                                 child: const FittedBox(
-                                  // Texto grande escalado
                                   child: Text(
                                     '-',
                                     style: TextStyle(
@@ -139,9 +131,6 @@ class _RutinasState extends State<Rutinas> {
                               ),
                             ),
                             const SizedBox(width: 8),
-
-                            // Botón "Hacer" - Texto centrado y escalado
-                                                        // Botón "Hacer" - Guarda el ID del ejercicio y va a la pantalla BLE
                             Expanded(
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(padding: EdgeInsets.zero),
@@ -150,7 +139,6 @@ class _RutinasState extends State<Rutinas> {
                                   context.push('/pantallabluetooth');
                                 },
                                 child: const FittedBox(
-                                  // Texto escalado
                                   child: Text('Hacer'),
                                 ),
                               ),
