@@ -7,7 +7,7 @@ import 'package:codigo_aplicacion/screens/rutinas.dart';
 import 'package:codigo_aplicacion/screens/estadisticas.dart';
 import 'package:codigo_aplicacion/screens/ejercicios.dart';
 import 'package:codigo_aplicacion/screens/manual_leds.dart';
-
+import 'package:codigo_aplicacion/screens/configuraciones.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/homescreen',
@@ -24,7 +24,11 @@ final appRouter = GoRouter(
       path: '/rutinas',
       builder: (context, state) => const Rutinas(),
     ),
-   GoRoute(
+    GoRoute(
+      path: '/configuraciones',
+      builder: (context, state) => const Configuraciones(),
+    ),
+    GoRoute(
       path: '/estadisticas',
       builder: (context, state) => const Estadisticas(),
     ),
@@ -36,13 +40,13 @@ final appRouter = GoRouter(
       path: '/infousers',
       builder: (context, state) => const Infousers(),
     ),
-        GoRoute(
+    GoRoute(
       path: '/manual_leds',
       builder: (context, state) => const ManualLeds(),
     ),
-     GoRoute(
+    GoRoute(
       path: '/pantallabluetooth',
-      builder: (context, state) =>  PantallaBluetooth(),
+      builder: (context, state) => const PantallaBluetooth(),
     ),
   ],
 );
